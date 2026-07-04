@@ -33,7 +33,7 @@
   #daycard{display:none;background:#000;z-index:30}
   #daycard h1{color:#a00;font-size:72px;letter-spacing:10px;margin:0}
   #daycard p{color:#665;font-size:16px;letter-spacing:2px}
-  #endcard{display:none;z-index:50}
+  #endcard{display:none;z-index:50;background:rgba(0,0,0,.94)}
   #endcard h1{font-size:60px;letter-spacing:8px;margin:0 0 12px 0}
   #endcard p{color:#998;font-size:17px;letter-spacing:1px;line-height:1.7;max-width:560px}
   #endcard button{margin-top:24px;padding:14px 40px;background:#200;border:1px solid #722;color:#daa;font-family:inherit;font-size:18px;letter-spacing:3px;cursor:pointer;pointer-events:auto}
@@ -52,6 +52,19 @@
   #btnCrouch{right:4vw;bottom:calc(6vh + 96px)}
   #btnLight{right:calc(4vw + 92px);bottom:calc(5vh + 82px)}
   @media (pointer:coarse){ #menu h1{font-size:40px;letter-spacing:4px} .diffbtn{width:80vw;max-width:340px} #howto{font-size:11px;padding:0 4vw} }
+  /* ---- small / portrait screens: stack HUD instead of overlapping ---- */
+  @media (max-width:700px){
+    #dayline{top:calc(8px + env(safe-area-inset-top));left:10px;font-size:13px;letter-spacing:1px}
+    #status{top:calc(28px + env(safe-area-inset-top));left:10px;font-size:12px}
+    #items{top:calc(8px + env(safe-area-inset-top));right:10px}
+    .item{font-size:10px;margin:2px 0}
+    #msg{bottom:auto;top:calc(96px + env(safe-area-inset-top));font-size:14px;padding:0 8vw;box-sizing:border-box}
+    #prompt{bottom:auto;top:calc(124px + env(safe-area-inset-top));font-size:13px}
+    #daycard h1{font-size:44px;letter-spacing:5px}
+    #endcard h1{font-size:36px;letter-spacing:4px}
+    #endcard p{font-size:13px;max-width:82vw}
+    #jumpscare canvas{width:min(96vmin,700px);height:min(96vmin,700px)}
+  }
 </style>
 </head>
 <body>
@@ -495,6 +508,7 @@ function resetDay(){ player.x=-8; player.z=-5; player.yaw=Math.PI*0.75; player.p
   say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD(); }
 
 function endGame(won){ gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
+  $('hud').style.display='none'; $('touchui').style.display='none';
   $('endcard').style.display='flex';
   if(won){ $('endtitle').textContent='YOU ESCAPED'; $('endtitle').style.color='#5f5';
     $('endtext').textContent='You slipped out the front door into the cold night air. Behind you, a scream of rage echoes through the house. You escaped on Day '+day+' ('+DIFF.name+').';
