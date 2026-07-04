@@ -23,11 +23,16 @@
   .diffbtn:hover{background:#3a0d0d;border-color:#f33;color:#fff;transform:scale(1.04)}
   .diffbtn small{display:block;color:#665;font-size:11px;letter-spacing:1px;margin-top:3px}
   #howto{color:#665;font-size:12px;margin-top:26px;line-height:1.8;letter-spacing:1px}
+  #settings{margin-top:18px;display:flex;gap:26px;justify-content:center}
+  #settings label{color:#776;font-size:11px;letter-spacing:2px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  #settings input[type=range]{width:140px;accent-color:#a33}
+  .diffbtn .best{color:#7f7}
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10;display:none}
   #dayline{position:absolute;top:14px;left:18px;color:#a88;font-size:18px;letter-spacing:2px;text-shadow:1px 1px 0 #000}
   #items{position:absolute;top:14px;right:18px;text-align:right}
   .item{color:#554;font-size:15px;letter-spacing:1px;margin:3px 0;text-shadow:1px 1px 0 #000}
   .item.got{color:#7f7}
+  .item.hdr{color:#766;font-size:11px;letter-spacing:2px;margin-top:6px}
   #msg{position:absolute;bottom:88px;width:100%;text-align:center;color:#ddc;font-size:19px;letter-spacing:1px;text-shadow:2px 2px 2px #000}
   #prompt{position:absolute;bottom:52px;width:100%;text-align:center;color:#ff9;font-size:16px;letter-spacing:1px;text-shadow:2px 2px 2px #000}
   #status{position:absolute;top:52px;left:18px;color:#f55;font-size:14px;letter-spacing:2px;text-shadow:1px 1px 0 #000}
@@ -58,6 +63,7 @@
   #btnRun{right:calc(4vw + 92px);bottom:5vh}
   #btnCrouch{right:4vw;bottom:calc(6vh + 96px)}
   #btnLight{right:calc(4vw + 92px);bottom:calc(5vh + 82px)}
+  #btnDart{display:none;right:calc(4vw + 92px);bottom:calc(5vh + 164px);background:rgba(30,150,80,.35);border-color:rgba(120,255,170,.5);color:#cfc}
   @media (pointer:coarse){ #menu h1{font-size:40px;letter-spacing:4px} #landing h1{font-size:44px;letter-spacing:5px} .diffbtn{width:80vw;max-width:340px} #howto{font-size:11px;padding:0 4vw} }
   /* ---- small / portrait screens: stack HUD instead of overlapping ---- */
   @media (max-width:700px){
@@ -94,6 +100,7 @@
   <button class="tbtn" id="btnRun">RUN</button>
   <button class="tbtn" id="btnCrouch">CROUCH</button>
   <button class="tbtn" id="btnLight">LIGHT</button>
+  <button class="tbtn" id="btnDart">DART</button>
 </div>
 
 <div id="landing" class="overlay">
@@ -112,9 +119,14 @@
   <button class="diffbtn" data-d="3">HARD<small>fast granny &middot; sharp ears &middot; long memory</small></button>
   <button class="diffbtn" data-d="4">EXTREME<small>very fast granny &middot; instant detection on sight &middot; hears a pin drop</small></button>
   <div id="howto">
-    WASD move &middot; SHIFT run (loud!) &middot; C crouch (quiet) &middot; F flashlight &middot; E interact / hide<br>
-    Find the 4 items hidden across BOTH floors of the house, unlock the front door, and escape.<br>
-    The staircase is in the storage room. If she catches you, you lose a day. Lose Day 5 and it's over.
+    WASD move &middot; SHIFT run (loud!) &middot; C crouch (quiet) &middot; F flashlight &middot; E interact / hide &middot; Q tranq dart<br>
+    TWO ways out: the FRONT DOOR (4 items) or GRANNY'S CAR out the back (car key + gas can).<br>
+    The staircase is in the storage room. Watch for creaky boards, vases and bear traps.<br>
+    If she catches you, you lose a day. Lose Day 5 and it's over.
+  </div>
+  <div id="settings">
+    <label>VOLUME <input type="range" id="setVol" min="0" max="1" step="0.05"></label>
+    <label>LOOK SPEED <input type="range" id="setSens" min="0.3" max="2.5" step="0.1"></label>
   </div>
 </div>
 
@@ -132,23 +144,26 @@ import * as THREE from 'three';
 
 /* ============================== CONFIG ============================== */
 const DIFFS = [
-  {name:'VERY EASY', speed:1.5, hearing:0.45, sight:6,  fov:80,  memory:2.0, hints:true,  instant:false, patrolPause:2.5},
-  {name:'EASY',      speed:1.9, hearing:0.65, sight:8,  fov:90,  memory:3.5, hints:true,  instant:false, patrolPause:1.8},
-  {name:'NORMAL',    speed:2.5, hearing:1.0,  sight:10, fov:100, memory:5.0, hints:false, instant:false, patrolPause:1.2},
-  {name:'HARD',      speed:3.1, hearing:1.35, sight:13, fov:115, memory:8.0, hints:false, instant:false, patrolPause:0.7},
-  {name:'EXTREME',   speed:3.7, hearing:1.8,  sight:18, fov:360, memory:12.0,hints:false, instant:true,  patrolPause:0.3},
+  {name:'VERY EASY', speed:1.5, hearing:0.45, sight:6,  fov:80,  memory:2.0, hints:true,  instant:false, patrolPause:2.5, stun:45, ambush:0,    traps:0},
+  {name:'EASY',      speed:1.9, hearing:0.65, sight:8,  fov:90,  memory:3.5, hints:true,  instant:false, patrolPause:1.8, stun:35, ambush:0.15, traps:0},
+  {name:'NORMAL',    speed:2.5, hearing:1.0,  sight:10, fov:100, memory:5.0, hints:false, instant:false, patrolPause:1.2, stun:25, ambush:0.3,  traps:2},
+  {name:'HARD',      speed:3.1, hearing:1.35, sight:13, fov:115, memory:8.0, hints:false, instant:false, patrolPause:0.7, stun:16, ambush:0.5,  traps:3},
+  {name:'EXTREME',   speed:3.7, hearing:1.8,  sight:18, fov:360, memory:12.0,hints:false, instant:true,  patrolPause:0.3, stun:10, ambush:0.65, traps:5},
 ];
 const WALL_H = 3.2, EYE = 1.62, CROUCH_EYE = 0.9, PLAYER_R = 0.34;
 const ITEMS = [
-  {id:'key',    name:'MASTER KEY',   color:0xffd34d},
-  {id:'hammer', name:'HAMMER',       color:0xcc4444},
-  {id:'pliers', name:'CUTTING PLIERS',color:0x44bbcc},
-  {id:'screw',  name:'SCREWDRIVER',  color:0xbb66ee},
+  {id:'key',    name:'MASTER KEY',   color:0xffd34d, route:'door'},
+  {id:'hammer', name:'HAMMER',       color:0xcc4444, route:'door'},
+  {id:'pliers', name:'CUTTING PLIERS',color:0x44bbcc, route:'door'},
+  {id:'screw',  name:'SCREWDRIVER',  color:0xbb66ee, route:'door'},
+  {id:'carkey', name:'CAR KEY',      color:0x66ff88, route:'car'},
+  {id:'gascan', name:'GAS CAN',      color:0xff5522, route:'car'},
 ];
 
 /* ============================== AUDIO ============================== */
 let AC=null, masterGain=null;
-function audioInit(){ if(AC) return; AC=new (window.AudioContext||window.webkitAudioContext)(); masterGain=AC.createGain(); masterGain.gain.value=0.8; masterGain.connect(AC.destination); }
+function audioInit(){ if(AC) return; AC=new (window.AudioContext||window.webkitAudioContext)(); masterGain=AC.createGain();
+  masterGain.gain.value=(typeof SETTINGS!=='undefined')?SETTINGS.vol:0.8; masterGain.connect(AC.destination); }
 function env(g,t0,a,peak,d){ g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(peak,t0+a); g.gain.exponentialRampToValueAtTime(0.0001,t0+a+d); }
 function noiseBuf(sec){ const b=AC.createBuffer(1,AC.sampleRate*sec,AC.sampleRate),d=b.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1; return b; }
 function sfxStep(vol,pitch){ if(!AC)return; const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
@@ -164,6 +179,30 @@ function sfxDoor(){ if(!AC)return; const t=AC.currentTime,o=AC.createOscillator(
   o.type='sawtooth'; o.frequency.setValueAtTime(80,t); o.frequency.linearRampToValueAtTime(140,t+0.6);
   env(g,t,0.05,0.12,0.7); const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=400;
   o.connect(f); f.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.8); }
+function sfxCreak(){ if(!AC)return; const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
+  o.type='sawtooth'; o.frequency.setValueAtTime(160,t); o.frequency.linearRampToValueAtTime(90+Math.random()*60,t+0.4);
+  const f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=300; f.Q.value=4;
+  env(g,t,0.03,0.12,0.45); o.connect(f); f.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.55); }
+function sfxSnap(){ if(!AC)return; const t=AC.currentTime;
+  const s=AC.createBufferSource(); s.buffer=noiseBuf(0.15); const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=1200;
+  const g=AC.createGain(); env(g,t,0.002,0.5,0.12); s.connect(f); f.connect(g); g.connect(masterGain); s.start(t);
+  const o=AC.createOscillator(),g2=AC.createGain(); o.type='square'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(60,t+0.15);
+  env(g2,t,0.002,0.35,0.18); o.connect(g2); g2.connect(masterGain); o.start(t); o.stop(t+0.25); }
+function sfxCrash(){ if(!AC)return; const t=AC.currentTime;
+  const s=AC.createBufferSource(); s.buffer=noiseBuf(0.4); const f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=2600; f.Q.value=1.2;
+  const g=AC.createGain(); env(g,t,0.003,0.4,0.35); s.connect(f); f.connect(g); g.connect(masterGain); s.start(t);
+  [1800,2400,3100].forEach((fr,i)=>{ const o=AC.createOscillator(),g2=AC.createGain(); o.type='triangle'; o.frequency.value=fr;
+    env(g2,t+0.02+i*0.04,0.003,0.12,0.2); o.connect(g2); g2.connect(masterGain); o.start(t); o.stop(t+0.4); }); }
+function sfxDart(){ if(!AC)return; const t=AC.currentTime;
+  const s=AC.createBufferSource(); s.buffer=noiseBuf(0.12); const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=3000;
+  const g=AC.createGain(); env(g,t,0.002,0.3,0.1); s.connect(f); f.connect(g); g.connect(masterGain); s.start(t);
+  const o=AC.createOscillator(),g2=AC.createGain(); o.type='sine'; o.frequency.setValueAtTime(900,t); o.frequency.exponentialRampToValueAtTime(300,t+0.12);
+  env(g2,t,0.005,0.2,0.12); o.connect(g2); g2.connect(masterGain); o.start(t); o.stop(t+0.18); }
+function sfxEngine(){ if(!AC)return; const t=AC.currentTime;
+  const o=AC.createOscillator(),g=AC.createGain(); o.type='sawtooth';
+  o.frequency.setValueAtTime(40,t); o.frequency.linearRampToValueAtTime(70,t+0.5); o.frequency.linearRampToValueAtTime(130,t+2.0);
+  const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=500;
+  env(g,t,0.1,0.4,2.2); o.connect(f); f.connect(g); g.connect(masterGain); o.start(t); o.stop(t+2.5); }
 function sfxSting(){ if(!AC)return; const t=AC.currentTime; [55,58,110].forEach(fr=>{ const o=AC.createOscillator(),g=AC.createGain();
   o.type='sawtooth'; o.frequency.value=fr; env(g,t,0.02,0.18,1.4); o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+1.6); }); }
 function sfxScream(){ if(!AC)return; const t=AC.currentTime;
@@ -437,10 +476,60 @@ function wardrobe(x,z,ry,fl=0){ const g=new THREE.Group();
   g.position.set(x,fl*WALL_H,z); g.rotation.y=ry; scene.add(g);
   (fl?colliders1:colliders0).push({x,z,w:1.4,d:1.0});
   const fx=x+Math.sin(ry)*1.0, fz=z+Math.cos(ry)*1.0;
-  hideSpots.push({x,z,ry,y:fl*WALL_H,standX:fx,standZ:fz,doors:[door,door2]}); }
+  hideSpots.push({x,z,ry,y:fl*WALL_H,standX:fx,standZ:fz,doors:[door,door2],kind:'wardrobe'}); }
 wardrobe(-9.2,-3,Math.PI/2); wardrobe(6.5,-7.3,0); wardrobe(9.2,5.8,-Math.PI/2);
 wardrobe(-1.5,-7.2,0,1);      // sewing room upstairs
 wardrobe(-9.3,7.2,Math.PI/2,1); // guest bedroom upstairs
+// under-bed hiding: bedroom bed (ground) + guest bed (upstairs); low eye, you can watch her feet
+hideSpots.push({x:-8.6,z:-6.5,ry:0,y:0,standX:-8.6,standZ:-5.2,kind:'bed'});
+hideSpots.push({x:-8.5,z:5.5,ry:Math.PI,y:WALL_H,standX:-8.5,standZ:4.2,kind:'bed'});
+
+/* ------ car escape: back door in the kitchen ------ */
+const backDoor=new THREE.Group();
+const bdPanel=new THREE.Mesh(new THREE.BoxGeometry(1.6,2.5,0.12),new THREE.MeshStandardMaterial({color:0x3f4a55,roughness:0.8}));
+bdPanel.position.y=1.25; backDoor.add(bdPanel);
+const bdSign=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.28,0.04),new THREE.MeshStandardMaterial({color:0x999966,roughness:0.6}));
+bdSign.position.set(0,2.05,0.09); backDoor.add(bdSign);
+backDoor.position.set(1.2,0,-7.85); scene.add(backDoor);
+const CAR_POS={x:1.2,z:-7.55};
+
+/* ------ creaky floorboards (noise hazards) ------ */
+const creaks=[
+  {x:-6,z:0,w:2.2,d:2.6,fl:0},{x:1,z:0,w:2.2,d:2.6,fl:0},{x:7,z:0,w:2.2,d:2.6,fl:0},
+  {x:9,z:-3.6,w:1.8,d:2.2,fl:1},{x:2,z:-4,w:2.2,d:2.2,fl:1},{x:-5,z:0,w:2.2,d:2.6,fl:1},
+].map(c=>({...c,cool:0}));
+for(const c of creaks){ const m=new THREE.Mesh(new THREE.PlaneGeometry(c.w,c.d),
+    new THREE.MeshStandardMaterial({color:0x1c140c,roughness:1}));
+  m.rotation.x=-Math.PI/2; m.position.set(c.x,c.fl*WALL_H+0.012,c.z); scene.add(m); }
+
+/* ------ knockable vases (bump them and she hears it) ------ */
+const vases=[];
+function vase(x,topY,z){ const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,0.34,10),new THREE.MeshStandardMaterial({color:0x8899aa,roughness:0.4}));
+  body.position.y=0.17; g.add(body);
+  g.position.set(x,topY,z); scene.add(g);
+  vases.push({obj:g,x,z,y0:topY,floorY:topY>3?WALL_H:0,fallen:false,vy:0}); }
+vase(-1.9,0.95,-7.1);            // kitchen counter
+vase(-1.2,0.75,6.6);             // living side table
+vase(7.3,0.82,6.9);              // study desk
+vase(-4.5,WALL_H+0.8,-6.3);      // sewing table
+vase(4.9,WALL_H+0.8,6.6);        // attic desk
+
+/* ------ bear traps (Normal+; placed fresh every day) ------ */
+const TRAP_SPOTS=[[-4.5,-2,0],[0,2.2,0],[4.5,3,0],[-2,5.5,0],[3,-6,0],[-7,2,0],
+  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1]];
+let traps=[];
+function buildTrapMesh(){ const g=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,12),new THREE.MeshStandardMaterial({color:0x555a5e,metalness:0.8,roughness:0.35}));
+  base.position.y=0.025; g.add(base);
+  const jawM=new THREE.MeshStandardMaterial({color:0x777d82,metalness:0.9,roughness:0.3});
+  const j1=new THREE.Mesh(new THREE.TorusGeometry(0.26,0.03,6,12,Math.PI),jawM); j1.rotation.x=Math.PI/2; j1.rotation.z=0; j1.position.y=0.07; g.add(j1);
+  const j2=j1.clone(); j2.rotation.y=Math.PI; g.add(j2); g.userData.jaws=[j1,j2];
+  return g; }
+function placeTraps(){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
+  const spots=shuffle(TRAP_SPOTS.slice()).slice(0,DIFF.traps);
+  for(const [x,z,fl] of spots){ const obj=buildTrapMesh(); obj.position.set(x,fl*WALL_H,z); scene.add(obj);
+    traps.push({obj,x,z,y:fl*WALL_H,sprung:false}); } }
 
 /* ------ item spawn points [x,z,topY] — both storeys ------ */
 const UP=WALL_H;
@@ -475,7 +564,7 @@ function buildGranny(){ const g=new THREE.Group();
   const bat=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.07,1.0,8),matWood); bat.position.set(0.52,1.0,0.35); bat.rotation.x=0.9; g.add(bat);
   g.traverse(o=>{if(o.isMesh){o.castShadow=true;}});
   const glow=new THREE.PointLight(0xff2211,2,4); glow.position.y=1.7; g.add(glow);
-  return g; }
+  g.userData={armL,armR,body,glow}; return g; }
 
 /* ============================== GAME STATE ============================== */
 const $=id=>document.getElementById(id);
@@ -483,6 +572,8 @@ let DIFF=DIFFS[2], playing=false, locked=false, gamePhase='menu'; // menu|play|j
 let day=1, inventory={}, appliedToDoor={}, doorOpen=false;
 let itemMeshes=[], hintSprites=[];
 let hidden=false, hideSpot=null, hiddenSafe=false;
+let hasDart=false, dartMesh=null, runT=0;
+const SETTINGS={vol:+(localStorage.getItem('gh_vol')??0.8), sens:+(localStorage.getItem('gh_sens')??1)};
 const player={x:-8,z:-5,y:0,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
 const granny={obj:buildGranny(),x:4,z:4,y:WALL_H,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0};
 scene.add(granny.obj);
@@ -490,25 +581,33 @@ const keys={};
 
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
+function itemMeshFor(it){ let mesh;
+  if(it.id==='key'||it.id==='carkey'){ mesh=new THREE.Group();
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(0.09,0.025,8,16),new THREE.MeshStandardMaterial({color:it.color,metalness:0.9,roughness:0.25}));
+    const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.22,0.04),ring.material); shaft.position.y=-0.16; mesh.add(ring,shaft); }
+  else if(it.id==='hammer'){ mesh=new THREE.Group();
+    const h=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.1,0.1),new THREE.MeshStandardMaterial({color:0x777,metalness:0.8,roughness:0.3}));
+    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.34,8),matWood); s.position.y=-0.18; mesh.add(h,s); }
+  else if(it.id==='pliers'){ mesh=new THREE.Group();
+    const a=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.34,0.05),new THREE.MeshStandardMaterial({color:it.color,metalness:0.6,roughness:0.4}));
+    a.rotation.z=0.25; const b=a.clone(); b.rotation.z=-0.25; mesh.add(a,b); }
+  else if(it.id==='gascan'){ mesh=new THREE.Group();
+    const can=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.32,0.14),new THREE.MeshStandardMaterial({color:it.color,roughness:0.6}));
+    const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.12,8),can.material); spout.position.set(0.09,0.2,0); spout.rotation.z=-0.5;
+    mesh.add(can,spout); }
+  else { mesh=new THREE.Group();
+    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.3,8),new THREE.MeshStandardMaterial({color:0x999,metalness:0.9,roughness:0.2}));
+    const hd=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.14,8),new THREE.MeshStandardMaterial({color:it.color,roughness:0.5}));
+    hd.position.y=0.2; mesh.add(s,hd); }
+  return mesh; }
+
 function spawnItems(){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
-  // always scatter across both storeys: 2 downstairs + 2 upstairs, random rooms
+  // 6 items scattered across both storeys: 3 downstairs + 3 upstairs, random rooms
   const ground=shuffle(SPAWNS.filter(s=>s[2]<WALL_H)), upper=shuffle(SPAWNS.filter(s=>s[2]>=WALL_H));
-  const spots=shuffle(ground.slice(0,2).concat(upper.slice(0,2)));
-  ITEMS.forEach((it,i)=>{ if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
-    const [sx,sz,sy]=spots[i]; let mesh;
-    if(it.id==='key'){ mesh=new THREE.Group();
-      const ring=new THREE.Mesh(new THREE.TorusGeometry(0.09,0.025,8,16),new THREE.MeshStandardMaterial({color:it.color,metalness:0.9,roughness:0.25}));
-      const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.22,0.04),ring.material); shaft.position.y=-0.16; mesh.add(ring,shaft); }
-    else if(it.id==='hammer'){ mesh=new THREE.Group();
-      const h=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.1,0.1),new THREE.MeshStandardMaterial({color:0x777,metalness:0.8,roughness:0.3}));
-      const s=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.34,8),matWood); s.position.y=-0.18; mesh.add(h,s); }
-    else if(it.id==='pliers'){ mesh=new THREE.Group();
-      const a=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.34,0.05),new THREE.MeshStandardMaterial({color:it.color,metalness:0.6,roughness:0.4}));
-      a.rotation.z=0.25; const b=a.clone(); b.rotation.z=-0.25; mesh.add(a,b); }
-    else { mesh=new THREE.Group();
-      const s=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.3,8),new THREE.MeshStandardMaterial({color:0x999,metalness:0.9,roughness:0.2}));
-      const hd=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.14,8),new THREE.MeshStandardMaterial({color:it.color,roughness:0.5}));
-      hd.position.y=0.2; mesh.add(s,hd); }
+  const spots=shuffle(ground.slice(0,3).concat(upper.slice(0,3)));
+  let si=0;
+  ITEMS.forEach(it=>{ if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
+    const [sx,sz,sy]=spots[si++]; const mesh=itemMeshFor(it);
     const gl=new THREE.PointLight(it.color,1.5,2.5); mesh.add(gl);
     mesh.position.set(sx,sy+0.15,sz); mesh.userData.item=it; scene.add(mesh); itemMeshes.push(mesh);
     if(DIFF.hints){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
@@ -517,9 +616,25 @@ function spawnItems(){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEa
       const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,opacity:0.55}));
       sp.position.set(sx,sy+0.7,sz); sp.scale.set(0.6,0.6,1); scene.add(sp); hintSprites.push(sp); mesh.userData.hint=sp; } }); }
 
-function updateItemsHUD(){ $('items').innerHTML=ITEMS.map(it=>{
-    const st=appliedToDoor[it.id]?'USED ✓':(inventory[it.id]?'HELD ✓':'???');
-    return `<div class="item ${inventory[it.id]||appliedToDoor[it.id]?'got':''}">${it.name} — ${st}</div>`; }).join(''); }
+function spawnDart(){ if(hasDart||dartMesh)return;
+  const used=new Set(itemMeshes.map(m=>m.position.x+','+m.position.z));
+  const free=SPAWNS.filter(s=>!used.has(s[0]+','+s[2]));
+  const [sx,sz,sy]=free[Math.random()*free.length|0];
+  dartMesh=new THREE.Group();
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.26,8),new THREE.MeshStandardMaterial({color:0x44ff99,roughness:0.3,transparent:true,opacity:0.85}));
+  const needle=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.14,6),new THREE.MeshStandardMaterial({color:0xccc,metalness:0.9}));
+  needle.position.y=-0.2; dartMesh.add(tube,needle);
+  dartMesh.add(new THREE.PointLight(0x44ff99,1.2,2));
+  dartMesh.rotation.z=0.5; dartMesh.position.set(sx,sy+0.2,sz); scene.add(dartMesh); }
+
+function updateItemsHUD(){
+  const row=it=>{ const st=appliedToDoor[it.id]?'USED ✓':(inventory[it.id]?'HELD ✓':'???');
+    return `<div class="item ${inventory[it.id]||appliedToDoor[it.id]?'got':''}">${it.name} — ${st}</div>`; };
+  $('items').innerHTML =
+    '<div class="item hdr">— FRONT DOOR —</div>'+ITEMS.filter(i=>i.route==='door').map(row).join('')+
+    '<div class="item hdr">— CAR —</div>'+ITEMS.filter(i=>i.route==='car').map(row).join('')+
+    (hasDart?'<div class="item got">TRANQ DART READY '+(IS_TOUCH?'':'[Q]')+'</div>':'');
+  if(IS_TOUCH)$('btnDart').style.display=(hasDart&&gamePhase==='play')?'flex':'none'; }
 
 let msgT=0; function say(t,sec=2.6){ $('msg').textContent=t; msgT=sec; }
 
@@ -537,6 +652,7 @@ function grannyCanSeePlayer(){ if(hidden&&hiddenSafe)return false;
   if(!sameFloor(granny.y,player.y)) return false; // floor slab blocks sight
   const dx=player.x-granny.x, dz=player.z-granny.z, dist=Math.hypot(dx,dz);
   let range=DIFF.sight*(player.crouch?0.55:1)*(flashOn?1.25:0.85);
+  if(granny.state==='ambush') range*=1.5; // lying in wait, senses sharpened
   if(hidden) range=1.4;
   if(dist>range) return false;
   if(!DIFF.instant){ const ang=Math.atan2(dx,dz); let dA=ang-granny.yaw;
@@ -545,7 +661,15 @@ function grannyCanSeePlayer(){ if(hidden&&hiddenSafe)return false;
   return !losBlocked(granny.x,granny.z,player.x,player.z,wallsFor(granny.y)); }
 
 function updateGranny(dt){
-  if(granny.stunT>0){ granny.stunT-=dt; return; }
+  const ud=granny.obj.userData;
+  if(granny.stunT>0){ granny.stunT-=dt;
+    // lies on the floor while tranquilized
+    granny.obj.rotation.x=Math.max(-1.35,granny.obj.rotation.x-dt*3);
+    ud.glow.intensity=0.2;
+    if(granny.stunT<=0){ granny.state='patrol'; granny.path=[]; granny.waitT=1; say('She\'s waking up...',2); }
+    return; }
+  granny.obj.rotation.x=Math.min(0,granny.obj.rotation.x+dt*2.5);
+  ud.glow.intensity=granny.state==='ambush'?0.6:2;
   const dx=player.x-granny.x, dz=player.z-granny.z, dy=player.y-granny.y;
   const dist=Math.hypot(dx,dz);
   const dist3=Math.hypot(dx,dz,dy);
@@ -558,7 +682,12 @@ function updateGranny(dt){
   if(grannyCanSeePlayer()){ if(granny.state!=='chase'){ granny.state='chase'; sfxSting(); $('status').textContent='RUN!!'; }
     granny.lastSeen={x:player.x,z:player.z,y:player.y}; granny.memT=DIFF.memory; }
   else if(granny.state==='chase'){ granny.memT-=dt;
-    if(granny.memT<=0){ granny.state='investigate'; if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); granny.waitT=0; $('status').textContent=''; } }
+    if(granny.memT<=0){
+      if(Math.random()<DIFF.ambush){ // she lies in wait near where she lost you, silent
+        granny.state='ambush'; granny.ambushT=8+Math.random()*7;
+        if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); }
+      else { granny.state='investigate'; if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); granny.waitT=0; }
+      $('status').textContent=''; } }
 
   let speed=DIFF.speed, tx=null, tz=null;
   granny.forcePathT=Math.max(0,(granny.forcePathT||0)-dt);
@@ -570,6 +699,10 @@ function updateGranny(dt){
   else if(granny.state==='investigate'){
     if(granny.pathI>=granny.path.length){ granny.state='patrol'; granny.waitT=DIFF.patrolPause; }
     else { const n=granny.path[granny.pathI]; tx=n.x; tz=n.z; } }
+  else if(granny.state==='ambush'){
+    if(granny.pathI<granny.path.length){ const n=granny.path[granny.pathI]; tx=n.x; tz=n.z; speed=DIFF.speed*0.85; }
+    else { granny.ambushT-=dt; // frozen, silent, watching
+      if(granny.ambushT<=0){ granny.state='patrol'; granny.waitT=0.5; } } }
   else { // patrol: wander every room on both storeys
     if(granny.waitT>0){ granny.waitT-=dt; }
     else if(!granny.path.length||granny.pathI>=granny.path.length){
@@ -592,10 +725,17 @@ function updateGranny(dt){
       else granny.stuckT=0;
       granny.x=nx; granny.z=nz;
       granny.y=floorHeight(granny.x,granny.z,granny.y);
+      granny.animT=(granny.animT||0)+speed*dt*2.4;
       granny.stepT+=speed*dt; if(granny.stepT>0.85){ granny.stepT=0;
-        const v=Math.max(0,1-dist3/14); if(v>0.02) sfxStep(v*0.5,70+Math.random()*15); } } }
+        const v=Math.max(0,1-dist3/14);
+        if(v>0.02 && granny.state!=='ambush') sfxStep(v*0.5,70+Math.random()*15); } } }
 
-  granny.obj.position.set(granny.x,granny.y+Math.abs(Math.sin(granny.stepT*7))*0.04,granny.z);
+  // walk animation: arm swing + body sway (still when idle/ambushing)
+  const moving=tx!==null, ph=granny.animT||0;
+  const swing=moving?Math.sin(ph)*0.55:0;
+  ud.armL.rotation.x=-0.5+swing; ud.armR.rotation.x=-0.5-swing;
+  ud.body.rotation.z=moving?Math.sin(ph)*0.06:0;
+  granny.obj.position.set(granny.x,granny.y+(moving?Math.abs(Math.sin(ph))*0.05:0),granny.z);
   granny.obj.rotation.y=granny.yaw;
 
   // catch
@@ -617,27 +757,43 @@ function caughtByGranny(){ if(gamePhase!=='play')return; gamePhase='jumpscare';
     setTimeout(()=>{ $('daycard').style.display='none'; resetDay(); gamePhase='play'; requestLock(); },2600);
   },1600); }
 
-function resetDay(){ player.x=-8; player.z=-5; player.y=0; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0;
+function resetDay(){ player.x=-8; player.z=-5; player.y=0; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0; player.rootT=0;
   hidden=false; hiddenSafe=false; hideSpot=null;
   granny.x=4; granny.z=4; granny.y=WALL_H; granny.state='patrol'; granny.path=[]; granny.pathI=0; granny.waitT=2.5; granny.stunT=1.5; granny.memT=0; granny.lastSeen=null;
+  granny.obj.rotation.x=0;
+  placeTraps(); spawnDart();
+  // vases stand back up each morning
+  for(const v of vases){ v.fallen=false; v.vy=0; v.obj.position.set(v.x,v.y0,v.z); v.obj.rotation.set(0,0,0); }
   $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; $('status').textContent='';
   say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD(); }
 
-function endGame(won){ gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
+function fmtTime(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); }
+function endGame(won,how){ gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
   $('hud').style.display='none'; $('touchui').style.display='none';
   $('endcard').style.display='flex';
   if(won){ $('endtitle').textContent='YOU ESCAPED'; $('endtitle').style.color='#5f5';
-    $('endtext').textContent='You slipped out the front door into the cold night air. Behind you, a scream of rage echoes through the house. You escaped on Day '+day+' ('+DIFF.name+').';
+    const via=how==='car'
+      ?'You floor it. Gravel sprays as the old car tears down the driveway — in the mirror, she stands in the doorway, screaming.'
+      :'You slipped out the front door into the cold night air. Behind you, a scream of rage echoes through the house.';
+    // save best day per difficulty
+    const key='gh_best_'+DIFFS.indexOf(DIFF), prev=+(localStorage.getItem(key)||99);
+    const isBest=day<prev; if(isBest) localStorage.setItem(key,day);
+    $('endtext').textContent=via+' Escaped on Day '+day+' in '+fmtTime(runT)+' ('+DIFF.name+').'+(isBest?' NEW BEST!':'');
     sfxUnlock(); }
   else{ $('endtitle').textContent='GAME OVER'; $('endtitle').style.color='#f22';
-    $('endtext').textContent='Day 5 has ended. Nobody will ever find you. Granny keeps the house very, very quiet.';
+    $('endtext').textContent='Day 5 has ended after '+fmtTime(runT)+'. Nobody will ever find you. Granny keeps the house very, very quiet.';
     sfxSting(); } }
 
 /* ============================== INTERACTION ============================== */
 function tryInteract(){
   // exit hiding
   if(hidden){ hidden=false; hiddenSafe=false;
-    player.x=hideSpot.standX; player.z=hideSpot.standZ; hideSpot=null; say('You climb out.'); makeNoise(3); return; }
+    player.x=hideSpot.standX; player.z=hideSpot.standZ;
+    say(hideSpot.kind==='bed'?'You crawl out.':'You climb out.'); hideSpot=null; makeNoise(3); return; }
+  // tranq dart pickup
+  if(dartMesh && Math.hypot(dartMesh.position.x-player.x,dartMesh.position.z-player.z)<1.4 && Math.abs(dartMesh.position.y-player.y-1)<2){
+    scene.remove(dartMesh); dartMesh=null; hasDart=true; sfxPickup();
+    say('TRANQ DART — '+(IS_TOUCH?'tap DART':'press Q')+' when you see her!',3.2); updateItemsHUD(); return; }
   // items
   for(let i=0;i<itemMeshes.length;i++){ const m=itemMeshes[i];
     if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){
@@ -651,7 +807,15 @@ function tryInteract(){
       // safe only if granny wasn't already chasing you into it
       hiddenSafe = !(granny.state==='chase' && Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y)<5);
       player.x=h.x+Math.sin(h.ry)*0.2; player.z=h.z+Math.cos(h.ry)*0.2; player.yaw=h.ry;
-      say(hiddenSafe?'Hidden. Stay quiet...':'She saw you go in...!'); makeNoise(2.5); sfxDoor(); return; } }
+      say(hiddenSafe?(h.kind==='bed'?'Under the bed. Watch her feet...':'Hidden. Stay quiet...'):'She saw you go in...!');
+      makeNoise(2.5); sfxDoor(); return; } }
+  // back door / car escape
+  if(player.y<1 && Math.hypot(CAR_POS.x-player.x,CAR_POS.z-player.z)<1.6){
+    if(inventory.carkey&&inventory.gascan){ sfxEngine(); say('The engine roars to life!'); endGame(true,'car'); }
+    else if(inventory.carkey) say('The car outside is out of gas. Find the GAS CAN.',3);
+    else if(inventory.gascan) say('You fuel the car... but you need the CAR KEY.',3);
+    else say('Granny\'s car is out back. You need the CAR KEY and GAS CAN.',3);
+    makeNoise(2); return; }
   // front door
   if(player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2){
     const order=['hammer','pliers','screw','key'];
@@ -670,10 +834,25 @@ function tryInteract(){
 
 function updatePrompt(){ let p='';
   if(hidden) p='[E] LEAVE HIDING SPOT';
-  else{ for(const m of itemMeshes){ if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){p='[E] TAKE '+m.userData.item.name;break;} }
-    if(!p) for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){p='[E] HIDE IN WARDROBE';break;} }
+  else{ if(dartMesh && Math.hypot(dartMesh.position.x-player.x,dartMesh.position.z-player.z)<1.4 && Math.abs(dartMesh.position.y-player.y-1)<2) p='[E] TAKE TRANQ DART';
+    if(!p) for(const m of itemMeshes){ if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){p='[E] TAKE '+m.userData.item.name;break;} }
+    if(!p) for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){p=h.kind==='bed'?'[E] HIDE UNDER BED':'[E] HIDE IN WARDROBE';break;} }
+    if(!p && player.y<1 && Math.hypot(CAR_POS.x-player.x,CAR_POS.z-player.z)<1.6) p='[E] BACK DOOR (CAR)';
     if(!p && player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2) p=doorOpen?'WALK THROUGH THE DOOR!':'[E] FRONT DOOR'; }
   $('prompt').textContent=p; }
+
+/* ------ tranq dart ------ */
+function fireDart(){ if(!hasDart||gamePhase!=='play'||hidden)return;
+  hasDart=false; updateItemsHUD(); sfxDart(); makeNoise(6);
+  const dx=granny.x-player.x, dz=granny.z-player.z, dist=Math.hypot(dx,dz);
+  let hit=false;
+  if(sameFloor(granny.y,player.y) && dist<14 && granny.stunT<=0){
+    const ang=Math.atan2(-dx,-dz); let dA=ang-player.yaw;
+    while(dA>Math.PI)dA-=2*Math.PI; while(dA<-Math.PI)dA+=2*Math.PI;
+    if(Math.abs(dA)<0.35 && !losBlocked(player.x,player.z,granny.x,granny.z,wallsFor(player.y))) hit=true; }
+  if(hit){ granny.stunT=DIFF.stun; granny.state='patrol'; granny.path=[]; $('status').textContent='';
+    say('Direct hit! She\'s down for '+DIFF.stun+' seconds.',3); }
+  else say('The dart flies into the darkness. Wasted.',2.5); }
 
 /* ============================== INPUT ============================== */
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
@@ -706,7 +885,7 @@ if(IS_TOUCH){
       if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; } } },{passive:false});
   addEventListener('touchmove',e=>{ if(gamePhase!=='play')return; e.preventDefault();
     for(const t of e.changedTouches){ if(t.identifier!==lookId)continue;
-      player.yaw-=(t.clientX-lx)*0.0045; player.pitch-=(t.clientY-ly)*0.0045;
+      player.yaw-=(t.clientX-lx)*0.0045*SETTINGS.sens; player.pitch-=(t.clientY-ly)*0.0045*SETTINGS.sens;
       player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch));
       lx=t.clientX; ly=t.clientY; } },{passive:false});
   const lookEnd=e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId)lookId=null; } };
@@ -721,15 +900,18 @@ if(IS_TOUCH){
   $('btnLight').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleFlash();},{passive:false});
   $('btnE').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();
     if(gamePhase==='play')tryInteract();},{passive:false});
+  $('btnDart').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();
+    fireDart(); updateItemsHUD();},{passive:false});
 }
 addEventListener('keydown',e=>{ keys[e.code]=true;
   if(gamePhase!=='play')return;
   if(e.code==='KeyF') toggleFlash();
   if(e.code==='KeyE') tryInteract();
+  if(e.code==='KeyQ') fireDart();
   if(e.code==='KeyC') player.crouch=!player.crouch; });
 addEventListener('keyup',e=>{keys[e.code]=false;});
 addEventListener('mousemove',e=>{ if(!locked||gamePhase!=='play')return;
-  player.yaw-=e.movementX*0.0022; player.pitch-=e.movementY*0.0022;
+  player.yaw-=e.movementX*0.0022*SETTINGS.sens; player.pitch-=e.movementY*0.0022*SETTINGS.sens;
   player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch)); });
 function requestLock(){ if(IS_TOUCH){locked=true;return;} renderer.domElement.requestPointerLock&&renderer.domElement.requestPointerLock(); }
 document.addEventListener('pointerlockchange',()=>{ if(IS_TOUCH)return;
@@ -738,6 +920,14 @@ document.addEventListener('pointerlockchange',()=>{ if(IS_TOUCH)return;
 addEventListener('click',()=>{ if(!IS_TOUCH&&gamePhase==='play'&&!locked) requestLock(); });
 
 /* ============================== MENU ============================== */
+// best-day badges + settings
+document.querySelectorAll('.diffbtn').forEach(b=>{ const v=localStorage.getItem('gh_best_'+b.dataset.d);
+  if(v) b.querySelector('small').innerHTML+=' &middot; <span class="best">BEST: DAY '+v+'</span>'; });
+$('setVol').value=SETTINGS.vol; $('setSens').value=SETTINGS.sens;
+$('setVol').addEventListener('input',e=>{ SETTINGS.vol=+e.target.value; localStorage.setItem('gh_vol',SETTINGS.vol);
+  if(masterGain)masterGain.gain.value=SETTINGS.vol; });
+$('setSens').addEventListener('input',e=>{ SETTINGS.sens=+e.target.value; localStorage.setItem('gh_sens',SETTINGS.sens); });
+
 $('enterbtn').addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient();
   $('landing').style.display='none'; $('menu').style.display='flex'; });
@@ -746,14 +936,15 @@ document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>
   DIFF=DIFFS[+b.dataset.d];
   $('menu').style.display='none'; $('hud').style.display='block';
   if(IS_TOUCH)$('touchui').style.display='block';
-  day=1; inventory={}; appliedToDoor={}; doorOpen=false;
+  day=1; runT=0; inventory={}; appliedToDoor={}; doorOpen=false; hasDart=false;
+  if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
   planks.forEach(p=>p.visible=true); padlock.visible=true; plate.visible=true;
   if(walls0.indexOf(doorWallRef)<0) walls0.push(doorWallRef);
   doorPanel.rotation.y=0; doorPanel.position.set(0,1.3,0);
   spawnItems(); resetDay(); gamePhase='play'; playing=true; requestLock(); }));
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,floorHeight,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},interact:tryInteract};
+window.__dbg={player,granny,floorHeight,fireDart,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();}};
 const clock=new THREE.Clock();
 let flickerT=0;
 function loop(){ requestAnimationFrame(loop);
@@ -765,9 +956,11 @@ function loop(){ requestAnimationFrame(loop);
     bulbs.forEach(b=>{ b.intensity=3.5+Math.random()*3; if(Math.random()<0.01)b.intensity=0.2; }); }
 
   if(gamePhase==='play'){
+    runT+=dt;
     player.noise=Math.max(0,player.noise-dt*20);
+    player.rootT=Math.max(0,(player.rootT||0)-dt);
     // movement
-    if(locked&&!hidden){
+    if(locked&&!hidden&&player.rootT<=0){
       let mx=0,mz=0;
       if(keys['KeyW'])mz-=1; if(keys['KeyS'])mz+=1; if(keys['KeyA'])mx-=1; if(keys['KeyD'])mx+=1;
       mx+=touch.jx; mz+=touch.jy;
@@ -786,11 +979,36 @@ function loop(){ requestAnimationFrame(loop);
         if(player.stepT>stepLen){ player.stepT=0; sfxStep(player.crouch?0.02:(player.run?0.09:0.045),120+Math.random()*30); }
         makeNoise(player.crouch?1.2:(player.run?10:4)); }
       // win check: walk through open door (ground floor only)
-      if(doorOpen && player.y<1 && player.z>8.0 && Math.abs(player.x+4)<1.4){ endGame(true); }
+      if(doorOpen && player.y<1 && player.z>8.0 && Math.abs(player.x+4)<1.4){ endGame(true,'door'); }
     }
+    /* ---- hazards ---- */
+    if(!hidden){
+      // creaky floorboards
+      for(const c of creaks){ c.cool=Math.max(0,c.cool-dt);
+        const onFl=Math.abs(player.y-c.fl*WALL_H)<1.2;
+        if(onFl && c.cool<=0 && Math.abs(player.x-c.x)<c.w/2 && Math.abs(player.z-c.z)<c.d/2 && player.noise>0.5){
+          c.cool=4; sfxCreak(); makeNoise(player.crouch?6:9); say('creeeak...',1.2); } }
+      // knockable vases
+      for(const v of vases){ if(v.fallen)continue;
+        if(Math.abs(player.y-v.floorY)<1.2 && Math.hypot(player.x-v.x,player.z-v.z)<0.75 && player.noise>0.5){
+          v.fallen=true; v.vy=0.001; } }
+      // bear traps
+      for(const tr of traps){ if(tr.sprung)continue;
+        if(Math.abs(player.y-tr.y)<1.2 && Math.hypot(player.x-tr.x,player.z-tr.z)<0.42){
+          tr.sprung=true; tr.obj.userData.jaws.forEach(j=>{j.rotation.x=Math.PI/2*0.15;j.position.y=0.16;});
+          player.rootT=2.6; sfxSnap(); makeNoise(15);
+          say('A BEAR TRAP! You\'re stuck!',2.5); $('redflash').style.opacity='0.45';
+          setTimeout(()=>{if(gamePhase==='play')$('redflash').style.opacity='0';},450); } }
+    }
+    // falling vase animation
+    for(const v of vases){ if(v.fallen && v.vy>0){
+      v.vy+=dt*9; v.obj.position.y-=v.vy*dt; v.obj.rotation.x+=dt*3;
+      if(v.obj.position.y<=v.floorY+0.05){ v.obj.position.y=v.floorY+0.05; v.obj.rotation.x=Math.PI/2; v.vy=0;
+        sfxCrash(); makeNoise(12); say('The vase shatters!',2); } } }
     updateGranny(dt);
     // camera
-    const eyeY=player.y+(player.crouch?CROUCH_EYE:EYE)+(hidden?0:Math.sin(player.bobT)*0.035);
+    const baseEye = hidden&&hideSpot&&hideSpot.kind==='bed' ? 0.35 : (player.crouch?CROUCH_EYE:EYE);
+    const eyeY=player.y+baseEye+(hidden?0:Math.sin(player.bobT)*0.035);
     camera.position.set(player.x,eyeY,player.z);
     camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
     // hint sprites bob
@@ -802,6 +1020,8 @@ function loop(){ requestAnimationFrame(loop);
     if(granny.state==='patrol'&&gd<7&&$('status').textContent!=='') $('status').textContent='';
     if(granny.state==='chase') $('status').textContent='RUN!!';
     else if(granny.state==='investigate') $('status').textContent='she is coming to look...';
+    else if(granny.state==='ambush') $('status').textContent='...it is very quiet.';
+    else if(granny.stunT>0) $('status').textContent='she is out cold';
     if(msgT>0){ msgT-=dt; if(msgT<=0)$('msg').textContent=''; }
     updatePrompt();
     // red edge when granny very close
