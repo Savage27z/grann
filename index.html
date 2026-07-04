@@ -8,8 +8,15 @@
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;user-select:none;-webkit-user-select:none;touch-action:none;overscroll-behavior:none}
   #game{position:fixed;inset:0}
   .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;text-align:center}
-  #menu{background:radial-gradient(ellipse at center,#1a0d0d 0%,#000 80%)}
+  #menu{background:radial-gradient(ellipse at center,#1a0d0d 0%,#000 80%);display:none}
   #menu h1{color:#8b0000;font-size:64px;margin:0 0 4px 0;letter-spacing:8px;text-shadow:0 0 24px #f00,3px 3px 0 #300;animation:flick 3s infinite}
+  #landing{background:radial-gradient(ellipse at center,#150a0a 0%,#000 85%);z-index:22}
+  #landing h1{color:#8b0000;font-size:76px;margin:0;letter-spacing:10px;text-shadow:0 0 30px #f00,4px 4px 0 #300;animation:flick 3s infinite}
+  #landing .by{color:#665;font-size:16px;letter-spacing:6px;margin:10px 0 60px 0}
+  #enterbtn{padding:18px 64px;background:#1a0808;border:2px solid #5a2020;color:#daa;font-family:inherit;font-size:22px;letter-spacing:5px;cursor:pointer;transition:all .2s;animation:pulse 2s infinite}
+  #enterbtn:hover{background:#4a0d0d;border-color:#f44;color:#fff;transform:scale(1.06)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 8px rgba(255,0,0,.15)}50%{box-shadow:0 0 26px rgba(255,0,0,.45)}}
+  #landing .hint{color:#443;font-size:11px;letter-spacing:2px;margin-top:70px}
   @keyframes flick{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.4}94%{opacity:1}97%{opacity:.6}98%{opacity:1}}
   #menu h2{color:#777;font-size:15px;font-weight:normal;margin:0 0 28px 0;letter-spacing:3px}
   .diffbtn{display:block;width:340px;margin:7px auto;padding:12px;background:#140a0a;border:1px solid #4a2020;color:#c9a;font-family:inherit;font-size:17px;letter-spacing:2px;cursor:pointer;transition:all .15s}
@@ -51,7 +58,7 @@
   #btnRun{right:calc(4vw + 92px);bottom:5vh}
   #btnCrouch{right:4vw;bottom:calc(6vh + 96px)}
   #btnLight{right:calc(4vw + 92px);bottom:calc(5vh + 82px)}
-  @media (pointer:coarse){ #menu h1{font-size:40px;letter-spacing:4px} .diffbtn{width:80vw;max-width:340px} #howto{font-size:11px;padding:0 4vw} }
+  @media (pointer:coarse){ #menu h1{font-size:40px;letter-spacing:4px} #landing h1{font-size:44px;letter-spacing:5px} .diffbtn{width:80vw;max-width:340px} #howto{font-size:11px;padding:0 4vw} }
   /* ---- small / portrait screens: stack HUD instead of overlapping ---- */
   @media (max-width:700px){
     #dayline{top:calc(8px + env(safe-area-inset-top));left:10px;font-size:13px;letter-spacing:1px}
@@ -89,6 +96,13 @@
   <button class="tbtn" id="btnLight">LIGHT</button>
 </div>
 
+<div id="landing" class="overlay">
+  <h1>GRANNY'S HOUSE</h1>
+  <div class="by">BY SAVAGE</div>
+  <button id="enterbtn">ENTER GAME</button>
+  <div class="hint">HEADPHONES RECOMMENDED &middot; SHE HEARS EVERYTHING</div>
+</div>
+
 <div id="menu" class="overlay">
   <h1>GRANNY'S HOUSE</h1>
   <h2>SHE HEARS EVERYTHING. YOU HAVE FIVE DAYS.</h2>
@@ -99,8 +113,8 @@
   <button class="diffbtn" data-d="4">EXTREME<small>very fast granny &middot; instant detection on sight &middot; hears a pin drop</small></button>
   <div id="howto">
     WASD move &middot; SHIFT run (loud!) &middot; C crouch (quiet) &middot; F flashlight &middot; E interact / hide<br>
-    Find the 4 items hidden in the house, unlock the front door, and escape.<br>
-    If she catches you, you lose a day. Lose Day 5 and it's over.
+    Find the 4 items hidden across BOTH floors of the house, unlock the front door, and escape.<br>
+    The staircase is in the storage room. If she catches you, you lose a day. Lose Day 5 and it's over.
   </div>
 </div>
 
@@ -208,37 +222,75 @@ function drawGrannyFace(){ const c=document.getElementById('jscanvas'),x=c.getCo
   // blood
   x.fillStyle='rgba(120,10,10,.7)'; for(let i=0;i<8;i++){ const bx=180+Math.random()*150; x.fillRect(bx,400+Math.random()*20,4,30+Math.random()*60); } }
 
-/* ============================== WORLD GEOMETRY ============================== */
-const walls=[]; // {x,z,w,d} collision + occlusion boxes
-const colliders=[]; // furniture: collision only (low, doesn't block sight)
-function seg(x1,z1,x2,z2,gaps){ // wall along axis with gaps [[a,b],...] in the varying coord
+/* ============================== WORLD GEOMETRY (2 STOREYS) ============================== */
+const walls0=[], walls1=[];        // wall boxes per storey {x,z,w,d}
+const colliders0=[], colliders1=[];// furniture per storey (collision only)
+const wallsFor=y=> y>2.0?walls1:walls0;
+const collidersFor=y=> y>2.0?colliders1:colliders0;
+function seg(fl,x1,z1,x2,z2,gaps){ // wall along axis with gaps [[a,b],...] in the varying coord
+  const arr = fl?walls1:walls0;
   const horiz = Math.abs(z2-z1)<0.001;
   const lo = horiz?Math.min(x1,x2):Math.min(z1,z2), hi = horiz?Math.max(x1,x2):Math.max(z1,z2);
   let pts=[lo]; (gaps||[]).sort((a,b)=>a[0]-b[0]).forEach(g=>{pts.push(g[0],g[1]);}); pts.push(hi);
   for(let i=0;i<pts.length;i+=2){ const a=pts[i],b=pts[i+1]; if(b-a<0.05)continue;
-    if(horiz) walls.push({x:(a+b)/2,z:z1,w:b-a,d:0.32}); else walls.push({x:x1,z:(a+b)/2,w:0.32,d:b-a}); } }
+    if(horiz) arr.push({x:(a+b)/2,z:z1,w:b-a,d:0.32}); else arr.push({x:x1,z:(a+b)/2,w:0.32,d:b-a}); } }
 
-// exterior (front door gap on south wall at x -5..-3)
-seg(-10,-8, 10,-8); seg(-10,8, 10,8, [[-5,-3]]); seg(-10,-8,-10,8); seg(10,-8,10,8);
-// interior
-seg(-10,0, 10,0, [[-7,-5],[0,2],[6,8]]);      // main east-west wall
-seg(-2,-8, -2,0, [[-5,-3]]);                   // bedroom | kitchen
-seg( 4,-8,  4,0, [[-5,-3]]);                   // kitchen | storage
-seg( 2, 0,  2,8, [[3,5]]);                     // living | study
+/* ---- GROUND FLOOR: front door gap on south wall at x -5..-3 ---- */
+seg(0,-10,-8, 10,-8); seg(0,-10,8, 10,8, [[-5,-3]]); seg(0,-10,-8,-10,8); seg(0,10,-8,10,8);
+seg(0,-10,0, 10,0, [[-7,-5],[0,2],[6,8]]);      // main east-west wall
+seg(0,-2,-8, -2,0, [[-5,-3]]);                   // bedroom | kitchen
+seg(0, 4,-8,  4,0, [[-5,-3]]);                   // kitchen | storage
+seg(0, 2, 0,  2,8, [[3,5]]);                     // living | study
 
-const ROOMS = {bedroom:[-6,-4], kitchen:[1,-4], storage:[7,-4], living:[-4,4], study:[6,4]};
+/* ---- UPPER FLOOR: sewing room NW, stair landing NE, guest bedroom SW, attic SE ---- */
+seg(1,-10,-8, 10,-8); seg(1,-10,8, 10,8); seg(1,-10,-8,-10,8); seg(1,10,-8,10,8);
+seg(1,-10,0, 10,0, [[-6,-4],[5,7]]);             // east-west wall upstairs
+seg(1, 2,-8,  2,0, [[-5,-3]]);                   // sewing | landing
+seg(1,-3, 0, -3,8, [[3,5]]);                     // guest | attic
 
-// waypoint graph for granny
-const WP=[[-6,-4],[1,-4],[7,-4],[-4,4],[6,4],[-2,-4],[4,-4],[-6,0.9],[1,0.9],[7,0.9],[2,4],[-4,6.3],[-6,-0.9],[1,-0.9],[7,-0.9]];
-const EDGES=[[0,5],[5,1],[1,6],[6,2],[0,12],[12,7],[7,3],[1,13],[13,8],[8,3],[2,14],[14,9],[9,4],[3,10],[10,4],[3,11]];
+/* ---- STAIRCASE (in the storage room, rises south toward the landing) ---- */
+const STAIR={x1:8.2,x2:9.8,z1:-7.0,z2:-2.6};
+// ground: block walking under the raised end of the stairs
+walls0.push({x:9.05,z:-2.45,w:1.9,d:0.14});
+// upstairs: rails around the stairwell hole (open on the south/top end)
+walls1.push({x:9.05,z:-7.1,w:1.9,d:0.14});      // north end of the hole
+const stairRailW={x:8.12,z:-4.6,w:0.14,d:4.4};   // west side rail (both storeys can hit it)
+walls0.push(stairRailW); walls1.push({...stairRailW});
+
+function floorHeight(x,z,y){ // walkable height at (x,z), given current height y
+  if(x>=STAIR.x1&&x<=STAIR.x2&&z>=STAIR.z1&&z<=STAIR.z2)
+    return Math.max(0,Math.min(WALL_H, WALL_H*(z-STAIR.z1)/(STAIR.z2-STAIR.z1)));
+  return y>2.0 ? WALL_H : 0; }
+
+/* rooms granny patrols: [x,z,y] */
+const ROOMS = {
+  bedroom:[-6,-4,0], kitchen:[1,-4,0], storage:[6.5,-4,0], living:[-4,4,0], study:[6,4,0],
+  sewing:[-4,-4,WALL_H], landing:[5.5,-4,WALL_H], guest:[-6.5,4,WALL_H], attic:[4,4,WALL_H] };
+
+/* waypoint graph for granny — [x,z,y] */
+const WP=[
+  /* 0-14 ground */
+  [-6,-4,0],[1,-4,0],[6.5,-4,0],[-4,4,0],[6,4,0],[-2,-4,0],[4,-4,0],[-6,0.9,0],[1,0.9,0],[7,0.9,0],
+  [2,4,0],[-4,6.3,0],[-6,-0.9,0],[1,-0.9,0],[7,-0.9,0],
+  /* 15-18 upper room centers: landing, sewing, guest, attic */
+  [5.5,-4,WALL_H],[-4,-4,WALL_H],[-6.5,4,WALL_H],[4,4,WALL_H],
+  /* 19-24 upper doorways */
+  [2,-4,WALL_H],[-5,-0.9,WALL_H],[-5,0.9,WALL_H],[6,-0.9,WALL_H],[6,0.9,WALL_H],[-3,4,WALL_H],
+  /* 25-27 stairs: top (on landing), mid (ramp), bottom (storage); 28 = clear exit into the storage room */
+  [9,-2.2,WALL_H],[9,-4.8,WALL_H*0.5],[9,-7.4,0],[6.8,-6.2,0]
+];
+const EDGES=[[0,5],[5,1],[1,6],[6,2],[0,12],[12,7],[7,3],[1,13],[13,8],[8,3],[2,14],[14,9],[9,4],[3,10],[10,4],[3,11],
+  [15,19],[19,16],[16,20],[20,21],[21,17],[15,22],[22,23],[23,18],[17,24],[24,18],
+  [15,25],[25,26],[26,27],[27,28],[28,2]];
 const ADJ=WP.map(()=>[]); EDGES.forEach(([a,b])=>{ADJ[a].push(b);ADJ[b].push(a);});
-function nearestWP(x,z){ let bi=0,bd=1e9; WP.forEach((p,i)=>{const d=(p[0]-x)**2+(p[1]-z)**2; if(d<bd){bd=d;bi=i;}}); return bi; }
+function nearestWP(x,z,y){ let bi=0,bd=1e9; WP.forEach((p,i)=>{
+  const d=(p[0]-x)**2+(p[1]-z)**2+((p[2]-y)*2.5)**2; if(d<bd){bd=d;bi=i;}}); return bi; }
 function bfsPath(a,b){ if(a===b)return[a]; const prev=new Array(WP.length).fill(-1),q=[a]; prev[a]=a;
   while(q.length){ const n=q.shift(); for(const m of ADJ[n]){ if(prev[m]<0){prev[m]=n; if(m===b){const p=[b];let c=b;while(c!==a){c=prev[c];p.unshift(c);}return p;} q.push(m);} } } return [a]; }
 
-// 2D ray vs wall boxes (line of sight)
-function losBlocked(x1,z1,x2,z2){
-  for(const w of walls){ const minx=w.x-w.w/2,maxx=w.x+w.w/2,minz=w.z-w.d/2,maxz=w.z+w.d/2;
+// 2D ray vs wall boxes of one storey (line of sight)
+function losBlocked(x1,z1,x2,z2,set){ set=set||walls0;
+  for(const w of set){ const minx=w.x-w.w/2,maxx=w.x+w.w/2,minz=w.z-w.d/2,maxz=w.z+w.d/2;
     let t0=0,t1=1; const dx=x2-x1,dz=z2-z1; let ok=true;
     for(const [p,d,lo,hi] of [[x1,dx,minx,maxx],[z1,dz,minz,maxz]]){
       if(Math.abs(d)<1e-9){ if(p<lo||p>hi){ok=false;break;} }
@@ -246,8 +298,8 @@ function losBlocked(x1,z1,x2,z2){
     if(ok && t1>=t0 && t0<=1 && t1>=0) return true; }
   return false; }
 
-function collide(px,pz,r){ // circle vs all boxes, returns corrected [x,z]
-  const boxes=walls.concat(colliders);
+function collide(px,pz,r,y){ // circle vs boxes of the entity's storey, returns corrected [x,z]
+  const boxes=wallsFor(y).concat(collidersFor(y));
   for(let iter=0;iter<3;iter++){ for(const b of boxes){
     const cx=Math.max(b.x-b.w/2,Math.min(px,b.x+b.w/2)), cz=Math.max(b.z-b.d/2,Math.min(pz,b.z+b.d/2));
     let dx=px-cx,dz=pz-cz,d2=dx*dx+dz*dz;
@@ -282,9 +334,28 @@ const matWood=new THREE.MeshStandardMaterial({color:0x4a3520,roughness:0.85});
 const matDark=new THREE.MeshStandardMaterial({color:0x2a1d12,roughness:0.9});
 
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(20.6,16.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
-const ceil=new THREE.Mesh(new THREE.PlaneGeometry(20.6,16.6),matCeil); ceil.rotation.x=Math.PI/2; ceil.position.y=WALL_H; scene.add(ceil);
-for(const w of walls){ const m=new THREE.Mesh(new THREE.BoxGeometry(w.w,WALL_H,w.d),matWall);
-  m.position.set(w.x,WALL_H/2,w.z); m.castShadow=m.receiveShadow=true; scene.add(m); }
+// upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
+for(const s of [
+  {x:-0.95,z:0,w:18.3,d:16.6},                       // everything west of the stairwell
+  {x:9.15,z:-7.75,w:2.3,d:1.1},                      // north sliver
+  {x:9.15,z:2.75,w:2.3,d:11.1},                      // south of the stairwell
+]){ const m=new THREE.Mesh(new THREE.BoxGeometry(s.w,0.24,s.d),matFloor);
+  m.position.set(s.x,WALL_H-0.12,s.z); m.castShadow=m.receiveShadow=true; scene.add(m); }
+// roof (upper ceiling)
+const roof=new THREE.Mesh(new THREE.PlaneGeometry(20.6,16.6),matCeil); roof.rotation.x=Math.PI/2; roof.position.y=WALL_H*2; scene.add(roof);
+// walls, both storeys
+for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w.w,WALL_H,w.d),matWall);
+  m.position.set(w.x,y0+WALL_H/2,w.z); m.castShadow=m.receiveShadow=true; scene.add(m); }
+// staircase steps
+{ const steps=14, len=(STAIR.z2-STAIR.z1)/steps;
+  for(let i=0;i<steps;i++){ const h=(i+1)*WALL_H/steps;
+    const st=new THREE.Mesh(new THREE.BoxGeometry(STAIR.x2-STAIR.x1,h,len),matWood);
+    st.position.set((STAIR.x1+STAIR.x2)/2, h/2, STAIR.z1+(i+0.5)*len);
+    st.castShadow=st.receiveShadow=true; scene.add(st); }
+  // banister along the west side
+  const ban=new THREE.Mesh(new THREE.BoxGeometry(0.1,1.0,STAIR.z2-STAIR.z1),matDark);
+  ban.position.set(STAIR.x1-0.05,WALL_H/2+0.5,(STAIR.z1+STAIR.z2)/2); ban.rotation.x=0; scene.add(ban); }
 
 // front door mesh
 const frontDoor=new THREE.Group();
@@ -297,35 +368,36 @@ padlock.position.set(0.75,1.05,-0.12); frontDoor.add(padlock);
 const plate=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.5,0.06),new THREE.MeshStandardMaterial({color:0x556,metalness:0.7,roughness:0.4}));
 plate.position.set(0.7,1.45,-0.11); frontDoor.add(plate);
 frontDoor.position.set(-4,0,8); scene.add(frontDoor);
-walls.push({x:-4,z:8,w:2,d:0.34}); // door blocks until opened
-const doorWallRef=walls[walls.length-1];
+walls0.push({x:-4,z:8,w:2,d:0.34}); // door blocks until opened
+const doorWallRef=walls0[walls0.length-1];
 
-// lighting: dim moonlight + few flickering bulbs
+// lighting: dim moonlight + flickering bulbs on both storeys
 scene.add(new THREE.AmbientLight(0x334,0.35));
 const bulbs=[];
-for(const [rx,rz] of [ROOMS.bedroom,ROOMS.kitchen,ROOMS.storage,ROOMS.living,ROOMS.study]){
-  const L=new THREE.PointLight(0xffcc88,5,10,2); L.position.set(rx,WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
+for(const [rx,rz,ry] of Object.values(ROOMS)){
+  const L=new THREE.PointLight(0xffcc88,5,10,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
   const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:0x664422})); bm.position.copy(L.position); scene.add(bm); }
 const flashlight=new THREE.SpotLight(0xfff4d6,0,18,0.55,0.6,1.1); flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);
 camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.12,-0.12,0); flashlight.target.position.set(0,0,-5);
 scene.add(camera);
 
-/* ------ furniture ------ */
-function box(x,y,z,w,h,d,mat,solid=true){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||matWood);
-  m.position.set(x,y+h/2,z); m.castShadow=m.receiveShadow=true; scene.add(m); if(solid)colliders.push({x,z,w:w+0.1,d:d+0.1}); return m; }
+/* ------ furniture (fl: 0 = ground, 1 = upstairs) ------ */
+function box(x,y,z,w,h,d,mat,solid=true,fl=0){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||matWood);
+  m.position.set(x,fl*WALL_H+y+h/2,z); m.castShadow=m.receiveShadow=true; scene.add(m);
+  if(solid)(fl?colliders1:colliders0).push({x,z,w:w+0.1,d:d+0.1}); return m; }
+const matPillow=new THREE.MeshStandardMaterial({color:0x777788,roughness:1});
 // bedroom
 box(-8.6,-0,-6.5,2.2,0.55,1.6,matDark);                 // bed
-box(-8.6,0.55,-7,2.2,0.25,0.6,new THREE.MeshStandardMaterial({color:0x777788,roughness:1}),false); // pillow
+box(-8.6,0.55,-7,2.2,0.25,0.6,matPillow,false);          // pillow
 box(-3.2,0,-7.2,1.4,0.8,0.8,matWood);                   // dresser
 // kitchen
 box(-1,0,-7.3,3,0.95,1.1,matWood);                      // counter
 box(2.6,0,-7.3,1.2,1.9,1.1,matDark);                    // fridge
-box(0.6,0,-3.5,1.8,0.78,1.1,matWood);                   // table
-// storage
-box(8.8,0,-7,1.6,1.2,1.6,matDark);                      // crates
-box(5.2,0,-6.8,1.2,0.9,1.2,matDark);
-box(9,0,-2,1.4,2.2,0.9,matWood);                        // shelf
+box(0.4,0,-2.6,1.8,0.78,1.1,matWood);                   // table (clear of the kitchen waypoint)
+// storage (staircase occupies the east side)
+box(5.2,0,-6.8,1.2,0.9,1.2,matDark);                    // crate
+box(4.8,0,-1.2,1.4,2.2,0.9,matWood);                    // shelf
 // living
 box(-4,0,3.2,2.4,0.5,1.1,matDark);                      // sofa
 box(-4,0.5,3.75,2.4,0.55,0.25,matDark,false);
@@ -335,29 +407,55 @@ box(-1,0,6.8,1.6,0.75,0.9,matWood);                     // side table
 box(6.5,0,7,2.2,0.82,1,matWood);                        // desk
 box(8.9,0,3,1.2,2.1,1.6,matWood);                       // bookcase
 box(4.2,0,1.8,1,0.6,1,matDark);                         // stool
+/* --- UPSTAIRS --- */
+// sewing room (NW)
+box(-4,0,-6.5,1.8,0.8,1,matWood,true,1);                // sewing table
+box(-9.2,0,-4,0.9,2,1.4,matWood,true,1);                // shelf
+box(0.8,0,-6.8,1.2,0.9,0.8,matDark,true,1);             // crib
+box(-7,0,-1,1.2,0.6,1.2,matDark,true,1);                // trunk
+// landing (NE)
+box(3,0,-7.3,1.4,1.1,1.1,matDark,true,1);               // boxes
+box(4.2,0,-1,1.2,0.85,0.9,matWood,true,1);               // console table
+// guest bedroom (SW)
+box(-8.5,0,5.5,2.2,0.55,1.6,matDark,true,1);            // guest bed
+box(-8.5,0.55,6,2.2,0.25,0.6,matPillow,false,1);        // pillow
+box(-9,0,2,1.3,0.8,0.8,matWood,true,1);                 // dresser
+// attic (SE)
+box(8,0,6.5,1.5,1.1,1.5,matDark,true,1);                // crates
+box(0,0,7,1.2,0.9,1.2,matDark,true,1);                  // chest
+box(4.5,0,6.8,1.8,0.8,0.9,matWood,true,1);              // old desk
 
-/* ------ hiding spots (wardrobes) ------ */
+/* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
 const hideSpots=[];
-function wardrobe(x,z,ry){ const g=new THREE.Group();
+function wardrobe(x,z,ry,fl=0){ const g=new THREE.Group();
   const body=new THREE.Mesh(new THREE.BoxGeometry(1.3,2.3,0.9),new THREE.MeshStandardMaterial({color:0x3a2818,roughness:0.85}));
   body.position.y=1.15; body.castShadow=body.receiveShadow=true; g.add(body);
   const door=new THREE.Mesh(new THREE.BoxGeometry(0.58,2.1,0.06),matDark); door.position.set(-0.32,1.15,0.46); g.add(door);
   const door2=door.clone(); door2.position.x=0.32; g.add(door2);
   const knob=new THREE.Mesh(new THREE.SphereGeometry(0.045,8,8),new THREE.MeshStandardMaterial({color:0xaa9944,metalness:0.8}));
   knob.position.set(-0.06,1.15,0.5); g.add(knob); const k2=knob.clone(); k2.position.x=0.06; g.add(k2);
-  g.position.set(x,0,z); g.rotation.y=ry; scene.add(g);
-  colliders.push({x,z,w:1.4,d:1.0});
+  g.position.set(x,fl*WALL_H,z); g.rotation.y=ry; scene.add(g);
+  (fl?colliders1:colliders0).push({x,z,w:1.4,d:1.0});
   const fx=x+Math.sin(ry)*1.0, fz=z+Math.cos(ry)*1.0;
-  hideSpots.push({x,z,ry,standX:fx,standZ:fz,doors:[door,door2]}); }
+  hideSpots.push({x,z,ry,y:fl*WALL_H,standX:fx,standZ:fz,doors:[door,door2]}); }
 wardrobe(-9.2,-3,Math.PI/2); wardrobe(6.5,-7.3,0); wardrobe(9.2,5.8,-Math.PI/2);
+wardrobe(-1.5,-7.2,0,1);      // sewing room upstairs
+wardrobe(-9.3,7.2,Math.PI/2,1); // guest bedroom upstairs
 
-/* ------ item spawn points ------ */
+/* ------ item spawn points [x,z,topY] — both storeys ------ */
+const UP=WALL_H;
 const SPAWNS=[
-  [-3.2,-6.6,0.9],[-8.6,-5.5,0.65],[-6,-1,0.05],      // bedroom
-  [-1,-6.6,1.05],[0.6,-2.8,0.88],[2.6,-6.6,2.0],       // kitchen
-  [8.8,-6.2,1.3],[9,-1.4,1.6],[5.2,-6.1,1.0],          // storage
-  [-8.5,4.9,1.0],[-1,6.3,0.85],[-4,2.6,0.6],           // living
-  [6.5,6.5,0.92],[8.9,2.4,1.7],[4.2,1.3,0.7],          // study
+  // ground floor
+  [-3.2,-6.6,0.9],[-8.6,-5.5,0.65],[-6,-1,0.05],       // bedroom
+  [-1,-6.6,1.05],[0.4,-2.2,0.88],[2.6,-6.6,2.0],        // kitchen
+  [5.2,-6.1,1.0],[4.8,-0.7,1.6],[7.5,-4.5,0.05],        // storage
+  [-8.5,4.9,1.0],[-1,6.3,0.85],[-4,2.6,0.6],            // living
+  [6.5,6.5,0.92],[8.9,2.4,1.7],[4.2,1.3,0.7],           // study
+  // upstairs
+  [-4,-6.1,UP+0.9],[-9.2,-3.4,UP+1.4],[0.8,-6.4,UP+1.0],[-7,-0.6,UP+0.7], // sewing
+  [3,-6.8,UP+1.2],[4.2,-0.6,UP+0.95],                    // landing
+  [-8.5,4.9,UP+0.65],[-9,1.6,UP+0.9],                    // guest
+  [8,6,UP+1.2],[0,6.6,UP+1.0],[4.5,6.4,UP+0.9],          // attic
 ];
 
 /* ============================== GRANNY MODEL ============================== */
@@ -385,15 +483,17 @@ let DIFF=DIFFS[2], playing=false, locked=false, gamePhase='menu'; // menu|play|j
 let day=1, inventory={}, appliedToDoor={}, doorOpen=false;
 let itemMeshes=[], hintSprites=[];
 let hidden=false, hideSpot=null, hiddenSafe=false;
-const player={x:-8,z:-5,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
-const granny={obj:buildGranny(),x:6,z:4,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0};
+const player={x:-8,z:-5,y:0,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
+const granny={obj:buildGranny(),x:4,z:4,y:WALL_H,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0};
 scene.add(granny.obj);
 const keys={};
 
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
 function spawnItems(){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
-  const spots=shuffle(SPAWNS.slice()).slice(0,4);
+  // always scatter across both storeys: 2 downstairs + 2 upstairs, random rooms
+  const ground=shuffle(SPAWNS.filter(s=>s[2]<WALL_H)), upper=shuffle(SPAWNS.filter(s=>s[2]>=WALL_H));
+  const spots=shuffle(ground.slice(0,2).concat(upper.slice(0,2)));
   ITEMS.forEach((it,i)=>{ if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
     const [sx,sz,sy]=spots[i]; let mesh;
     if(it.id==='key'){ mesh=new THREE.Group();
@@ -426,12 +526,15 @@ let msgT=0; function say(t,sec=2.6){ $('msg').textContent=t; msgT=sec; }
 function makeNoise(radius){ player.noise=Math.max(player.noise,radius); }
 
 /* ============================== GRANNY AI ============================== */
-function grannySetPath(tx,tz){ const a=nearestWP(granny.x,granny.z), b=nearestWP(tx,tz);
-  granny.path=bfsPath(a,b).map(i=>({x:WP[i][0],z:WP[i][1]})); granny.path.push({x:tx,z:tz}); granny.pathI=0;
-  // skip waypoints already visible/behind
-  while(granny.pathI<granny.path.length-1 && !losBlocked(granny.x,granny.z,granny.path[granny.pathI+1].x,granny.path[granny.pathI+1].z)) granny.pathI++; }
+function sameFloor(y1,y2){ return Math.abs(y1-y2)<1.5; }
+function grannySetPath(tx,tz,ty){ const a=nearestWP(granny.x,granny.z,granny.y), b=nearestWP(tx,tz,ty||0);
+  granny.path=bfsPath(a,b).map(i=>({x:WP[i][0],z:WP[i][1],y:WP[i][2]})); granny.path.push({x:tx,z:tz,y:ty||0}); granny.pathI=0;
+  // skip same-floor waypoints already visible/behind
+  while(granny.pathI<granny.path.length-1){ const n=granny.path[granny.pathI+1];
+    if(!sameFloor(n.y,granny.y) || losBlocked(granny.x,granny.z,n.x,n.z,wallsFor(granny.y))) break; granny.pathI++; } }
 
 function grannyCanSeePlayer(){ if(hidden&&hiddenSafe)return false;
+  if(!sameFloor(granny.y,player.y)) return false; // floor slab blocks sight
   const dx=player.x-granny.x, dz=player.z-granny.z, dist=Math.hypot(dx,dz);
   let range=DIFF.sight*(player.crouch?0.55:1)*(flashOn?1.25:0.85);
   if(hidden) range=1.4;
@@ -439,34 +542,39 @@ function grannyCanSeePlayer(){ if(hidden&&hiddenSafe)return false;
   if(!DIFF.instant){ const ang=Math.atan2(dx,dz); let dA=ang-granny.yaw;
     while(dA>Math.PI)dA-=2*Math.PI; while(dA<-Math.PI)dA+=2*Math.PI;
     if(Math.abs(dA)>DIFF.fov*Math.PI/360) return false; }
-  return !losBlocked(granny.x,granny.z,player.x,player.z); }
+  return !losBlocked(granny.x,granny.z,player.x,player.z,wallsFor(granny.y)); }
 
 function updateGranny(dt){
   if(granny.stunT>0){ granny.stunT-=dt; return; }
-  const dx=player.x-granny.x, dz=player.z-granny.z, dist=Math.hypot(dx,dz);
-  // hearing
+  const dx=player.x-granny.x, dz=player.z-granny.z, dy=player.y-granny.y;
+  const dist=Math.hypot(dx,dz);
+  const dist3=Math.hypot(dx,dz,dy);
+  // hearing (muffled through the floor)
   if(player.noise>0){ const hr=player.noise*DIFF.hearing;
-    if(dist<hr && granny.state!=='chase'){ granny.state='investigate'; grannySetPath(player.x,player.z); granny.waitT=0;
-      if(dist<hr*0.7) $('status').textContent='SHE HEARD YOU'; } }
+    const heardDist=sameFloor(granny.y,player.y)?dist3:dist3*1.7;
+    if(heardDist<hr && granny.state!=='chase'){ granny.state='investigate'; grannySetPath(player.x,player.z,player.y); granny.waitT=0;
+      if(heardDist<hr*0.7) $('status').textContent='SHE HEARD YOU'; } }
   // vision
   if(grannyCanSeePlayer()){ if(granny.state!=='chase'){ granny.state='chase'; sfxSting(); $('status').textContent='RUN!!'; }
-    granny.lastSeen={x:player.x,z:player.z}; granny.memT=DIFF.memory; }
+    granny.lastSeen={x:player.x,z:player.z,y:player.y}; granny.memT=DIFF.memory; }
   else if(granny.state==='chase'){ granny.memT-=dt;
-    if(granny.memT<=0){ granny.state='investigate'; if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z); granny.waitT=0; $('status').textContent=''; } }
+    if(granny.memT<=0){ granny.state='investigate'; if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); granny.waitT=0; $('status').textContent=''; } }
 
   let speed=DIFF.speed, tx=null, tz=null;
+  granny.forcePathT=Math.max(0,(granny.forcePathT||0)-dt);
   if(granny.state==='chase'){ speed=DIFF.speed*1.25;
-    if(!losBlocked(granny.x,granny.z,player.x,player.z)){ tx=player.x; tz=player.z; granny.path=[]; }
-    else { if(!granny.path.length||granny.pathI>=granny.path.length) grannySetPath(granny.lastSeen?granny.lastSeen.x:player.x, granny.lastSeen?granny.lastSeen.z:player.z);
+    if(granny.forcePathT<=0 && sameFloor(granny.y,player.y) && !losBlocked(granny.x,granny.z,player.x,player.z,wallsFor(granny.y))){ tx=player.x; tz=player.z; granny.path=[]; }
+    else { if(!granny.path.length||granny.pathI>=granny.path.length){ const L=granny.lastSeen||{x:player.x,z:player.z,y:player.y};
+        grannySetPath(player.x,player.z,player.y); }
       const n=granny.path[Math.min(granny.pathI,granny.path.length-1)]; tx=n.x; tz=n.z; } }
   else if(granny.state==='investigate'){
     if(granny.pathI>=granny.path.length){ granny.state='patrol'; granny.waitT=DIFF.patrolPause; }
     else { const n=granny.path[granny.pathI]; tx=n.x; tz=n.z; } }
-  else { // patrol
+  else { // patrol: wander every room on both storeys
     if(granny.waitT>0){ granny.waitT-=dt; }
     else if(!granny.path.length||granny.pathI>=granny.path.length){
       const rooms=Object.values(ROOMS); const r=rooms[Math.random()*rooms.length|0];
-      grannySetPath(r[0]+(Math.random()*3-1.5), r[1]+(Math.random()*3-1.5)); }
+      grannySetPath(r[0]+(Math.random()*3-1.5), r[1]+(Math.random()*3-1.5), r[2]); }
     if(granny.path.length&&granny.pathI<granny.path.length){ const n=granny.path[granny.pathI]; tx=n.x; tz=n.z; speed=DIFF.speed*0.7; } }
 
   if(tx!==null){ const mdx=tx-granny.x, mdz=tz-granny.z, md=Math.hypot(mdx,mdz);
@@ -475,16 +583,24 @@ function updateGranny(dt){
       while(dY>Math.PI)dY-=2*Math.PI; while(dY<-Math.PI)dY+=2*Math.PI;
       granny.yaw+=dY*Math.min(1,dt*6);
       let nx=granny.x+mdx/md*speed*dt, nz=granny.z+mdz/md*speed*dt;
-      [nx,nz]=collide(nx,nz,0.4); granny.x=nx; granny.z=nz;
+      [nx,nz]=collide(nx,nz,0.4,granny.y);
+      // unstick: if a collider pins her, fall back to waypoint pathing for a bit
+      if(Math.hypot(nx-granny.x,nz-granny.z)<speed*dt*0.25){ granny.stuckT=(granny.stuckT||0)+dt;
+        if(granny.stuckT>0.8){ granny.stuckT=0;
+          if(granny.state==='chase'){ granny.forcePathT=2.5; grannySetPath(player.x,player.z,player.y); }
+          else granny.pathI++; } }
+      else granny.stuckT=0;
+      granny.x=nx; granny.z=nz;
+      granny.y=floorHeight(granny.x,granny.z,granny.y);
       granny.stepT+=speed*dt; if(granny.stepT>0.85){ granny.stepT=0;
-        const v=Math.max(0,1-dist/14); if(v>0.02) sfxStep(v*0.5,70+Math.random()*15); } } }
+        const v=Math.max(0,1-dist3/14); if(v>0.02) sfxStep(v*0.5,70+Math.random()*15); } } }
 
-  granny.obj.position.set(granny.x,0,granny.z); granny.obj.rotation.y=granny.yaw;
-  granny.obj.position.y=Math.abs(Math.sin(granny.stepT*7))*0.04;
+  granny.obj.position.set(granny.x,granny.y+Math.abs(Math.sin(granny.stepT*7))*0.04,granny.z);
+  granny.obj.rotation.y=granny.yaw;
 
   // catch
   const catchR = hidden ? 0.9 : 1.05;
-  if(dist<catchR && !(hidden&&hiddenSafe)) caughtByGranny();
+  if(dist3<catchR && !(hidden&&hiddenSafe)) caughtByGranny();
 }
 
 /* ============================== CAUGHT / DAYS ============================== */
@@ -501,9 +617,9 @@ function caughtByGranny(){ if(gamePhase!=='play')return; gamePhase='jumpscare';
     setTimeout(()=>{ $('daycard').style.display='none'; resetDay(); gamePhase='play'; requestLock(); },2600);
   },1600); }
 
-function resetDay(){ player.x=-8; player.z=-5; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0;
+function resetDay(){ player.x=-8; player.z=-5; player.y=0; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0;
   hidden=false; hiddenSafe=false; hideSpot=null;
-  granny.x=6; granny.z=4; granny.state='patrol'; granny.path=[]; granny.pathI=0; granny.waitT=2.5; granny.stunT=1.5; granny.memT=0; granny.lastSeen=null;
+  granny.x=4; granny.z=4; granny.y=WALL_H; granny.state='patrol'; granny.path=[]; granny.pathI=0; granny.waitT=2.5; granny.stunT=1.5; granny.memT=0; granny.lastSeen=null;
   $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; $('status').textContent='';
   say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD(); }
 
@@ -524,20 +640,20 @@ function tryInteract(){
     player.x=hideSpot.standX; player.z=hideSpot.standZ; hideSpot=null; say('You climb out.'); makeNoise(3); return; }
   // items
   for(let i=0;i<itemMeshes.length;i++){ const m=itemMeshes[i];
-    if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4){
+    if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){
       const it=m.userData.item; inventory[it.id]=true;
       scene.remove(m); if(m.userData.hint)scene.remove(m.userData.hint);
       itemMeshes.splice(i,1); sfxPickup(); makeNoise(5*(player.crouch?0.5:1));
       say('Picked up: '+it.name); updateItemsHUD(); return; } }
   // hiding spots
-  for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3){
+  for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){
       hideSpot=h; hidden=true;
       // safe only if granny wasn't already chasing you into it
-      hiddenSafe = !(granny.state==='chase' && Math.hypot(granny.x-player.x,granny.z-player.z)<5);
+      hiddenSafe = !(granny.state==='chase' && Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y)<5);
       player.x=h.x+Math.sin(h.ry)*0.2; player.z=h.z+Math.cos(h.ry)*0.2; player.yaw=h.ry;
       say(hiddenSafe?'Hidden. Stay quiet...':'She saw you go in...!'); makeNoise(2.5); sfxDoor(); return; } }
   // front door
-  if(Math.hypot(-4-player.x,8-player.z)<2.2){
+  if(player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2){
     const order=['hammer','pliers','screw','key'];
     for(const id of order){ if(appliedToDoor[id])continue;
       const it=ITEMS.find(a=>a.id===id);
@@ -548,15 +664,15 @@ function tryInteract(){
       if(id==='pliers'){ padlock.visible=false; say('Snip. The padlock falls.'); }
       if(id==='screw'){ plate.visible=false; say('The plate comes off, revealing the keyhole.'); }
       if(id==='key'){ say('CLICK. The door is open. GO!'); doorOpen=true; doorPanel.rotation.y=1.9; doorPanel.position.x=-0.85; doorPanel.position.z=-0.8;
-        const wi=walls.indexOf(doorWallRef); if(wi>=0)walls.splice(wi,1); sfxDoor(); }
+        const wi=walls0.indexOf(doorWallRef); if(wi>=0)walls0.splice(wi,1); sfxDoor(); }
       updateItemsHUD(); return; } }
   say('Nothing here.',1.2); }
 
 function updatePrompt(){ let p='';
   if(hidden) p='[E] LEAVE HIDING SPOT';
-  else{ for(const m of itemMeshes){ if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4){p='[E] TAKE '+m.userData.item.name;break;} }
-    if(!p) for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3){p='[E] HIDE IN WARDROBE';break;} }
-    if(!p && Math.hypot(-4-player.x,8-player.z)<2.2) p=doorOpen?'WALK THROUGH THE DOOR!':'[E] FRONT DOOR'; }
+  else{ for(const m of itemMeshes){ if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){p='[E] TAKE '+m.userData.item.name;break;} }
+    if(!p) for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){p='[E] HIDE IN WARDROBE';break;} }
+    if(!p && player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2) p=doorOpen?'WALK THROUGH THE DOOR!':'[E] FRONT DOOR'; }
   $('prompt').textContent=p; }
 
 /* ============================== INPUT ============================== */
@@ -568,7 +684,7 @@ function toggleFlash(){ flashOn=!flashOn; flashlight.intensity=flashOn?18:0; sfx
 /* ---- touch controls ---- */
 const touch={jx:0,jy:0,run:false};
 if(IS_TOUCH){
-  $('howto').innerHTML='LEFT STICK move &middot; DRAG right side to look &middot; RUN is loud, CROUCH is quiet<br>Find the 4 items hidden in the house, unlock the front door with [E], and escape.<br>If she catches you, you lose a day. Lose Day 5 and it\'s over.';
+  $('howto').innerHTML='LEFT STICK move &middot; DRAG right side to look &middot; RUN is loud, CROUCH is quiet<br>Find the 4 items hidden across BOTH floors, unlock the front door with [E], and escape.<br>The staircase is in the storage room. If she catches you, you lose a day. Lose Day 5 and it\'s over.';
   const joy=$('joy'),knob=$('joyknob'); let joyId=null,jcx=0,jcy=0;
   joy.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; joyId=t.identifier;
     const r=joy.getBoundingClientRect(); jcx=r.left+r.width/2; jcy=r.top+r.height/2; },{passive:false});
@@ -622,6 +738,9 @@ document.addEventListener('pointerlockchange',()=>{ if(IS_TOUCH)return;
 addEventListener('click',()=>{ if(!IS_TOUCH&&gamePhase==='play'&&!locked) requestLock(); });
 
 /* ============================== MENU ============================== */
+$('enterbtn').addEventListener('click',()=>{
+  audioInit(); AC.resume&&AC.resume(); startAmbient();
+  $('landing').style.display='none'; $('menu').style.display='flex'; });
 document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient();
   DIFF=DIFFS[+b.dataset.d];
@@ -629,12 +748,12 @@ document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>
   if(IS_TOUCH)$('touchui').style.display='block';
   day=1; inventory={}; appliedToDoor={}; doorOpen=false;
   planks.forEach(p=>p.visible=true); padlock.visible=true; plate.visible=true;
-  if(walls.indexOf(doorWallRef)<0) walls.push(doorWallRef);
+  if(walls0.indexOf(doorWallRef)<0) walls0.push(doorWallRef);
   doorPanel.rotation.y=0; doorPanel.position.set(0,1.3,0);
   spawnItems(); resetDay(); gamePhase='play'; playing=true; requestLock(); }));
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},interact:tryInteract};
+window.__dbg={player,granny,floorHeight,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},interact:tryInteract};
 const clock=new THREE.Clock();
 let flickerT=0;
 function loop(){ requestAnimationFrame(loop);
@@ -658,26 +777,27 @@ function loop(){ requestAnimationFrame(loop);
       if(moving){ const L=Math.max(1,Math.hypot(mx,mz)); mx/=L; mz/=L;
         const s=Math.sin(player.yaw),c=Math.cos(player.yaw);
         let nx=player.x+(mx*c + mz*s)*sp*dt, nz=player.z+(-mx*s + mz*c)*sp*dt;
-        [nx,nz]=collide(nx,nz,PLAYER_R);
+        [nx,nz]=collide(nx,nz,PLAYER_R,player.y);
         nx=Math.max(-10.2,Math.min(10.2,nx)); nz=Math.max(-8.2,Math.min(8.6,nz));
         player.x=nx; player.z=nz;
+        player.y=floorHeight(player.x,player.z,player.y);
         player.bobT+=dt*sp*1.8; player.stepT+=dt*sp;
         const stepLen=player.crouch?1.6:2.2;
         if(player.stepT>stepLen){ player.stepT=0; sfxStep(player.crouch?0.02:(player.run?0.09:0.045),120+Math.random()*30); }
         makeNoise(player.crouch?1.2:(player.run?10:4)); }
-      // win check: walk through open door
-      if(doorOpen && player.z>8.0 && Math.abs(player.x+4)<1.4){ endGame(true); }
+      // win check: walk through open door (ground floor only)
+      if(doorOpen && player.y<1 && player.z>8.0 && Math.abs(player.x+4)<1.4){ endGame(true); }
     }
     updateGranny(dt);
     // camera
-    const eyeY=(player.crouch?CROUCH_EYE:EYE)+(hidden?0:Math.sin(player.bobT)*0.035);
+    const eyeY=player.y+(player.crouch?CROUCH_EYE:EYE)+(hidden?0:Math.sin(player.bobT)*0.035);
     camera.position.set(player.x,eyeY,player.z);
     camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
     // hint sprites bob
     hintSprites.forEach((s,i)=>{ s.position.y+=Math.sin(t*2+i)*0.0015; });
     itemMeshes.forEach((m,i)=>{ m.rotation.y=t*1.5+i; });
     // proximity heartbeat + status
-    const gd=Math.hypot(granny.x-player.x,granny.z-player.z);
+    const gd=Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y);
     heartBeat(Math.max(0,1-gd/9));
     if(granny.state==='patrol'&&gd<7&&$('status').textContent!=='') $('status').textContent='';
     if(granny.state==='chase') $('status').textContent='RUN!!';
