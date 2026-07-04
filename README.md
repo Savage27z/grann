@@ -21,6 +21,10 @@ You're trapped in Granny's house. Find the **4 items** hidden in randomized spot
 | F | Flashlight (she can spot the beam) |
 | E | Pick up items / hide in wardrobes / use the front door |
 
+### Mobile / touch
+
+Works on phones and tablets: a virtual joystick (bottom left) moves you, dragging anywhere on the right side of the screen looks around, and on-screen buttons handle RUN (hold), CROUCH (toggle), LIGHT (flashlight), and E (interact). Touch controls appear automatically on touch devices.
+
 ## Granny AI
 
 She patrols the house on a waypoint graph. She **hears** noise (running, prying planks, slamming wardrobe doors) and comes to investigate. She **sees** you with a line-of-sight raycast and a view cone, then chases with pathfinding and a memory of where you were. Hide in wardrobes — but if she watches you climb in, she'll pull you right back out.

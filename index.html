@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>GRANNY'S HOUSE — Escape Before Day 5</title>
 <style>
-  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;user-select:none}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;user-select:none;-webkit-user-select:none;touch-action:none;overscroll-behavior:none}
   #game{position:fixed;inset:0}
   .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;text-align:center}
   #menu{background:radial-gradient(ellipse at center,#1a0d0d 0%,#000 80%)}
@@ -41,6 +41,17 @@
   #pause{display:none;background:rgba(0,0,0,.85);z-index:25}
   #pause h1{color:#966;font-size:40px;letter-spacing:6px}
   #pause p{color:#665;font-size:14px;letter-spacing:1px;line-height:2}
+  /* ---- touch controls ---- */
+  #touchui{position:fixed;inset:0;z-index:12;pointer-events:none;display:none}
+  #joy{position:absolute;left:4vw;bottom:5vh;width:130px;height:130px;border:2px solid rgba(255,255,255,.18);border-radius:50%;background:rgba(255,255,255,.05);pointer-events:auto;touch-action:none}
+  #joyknob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px;border-radius:50%;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.3)}
+  .tbtn{position:absolute;width:64px;height:64px;border-radius:50%;background:rgba(120,30,30,.35);border:2px solid rgba(255,120,120,.4);color:#ecc;font-family:inherit;font-size:12px;letter-spacing:1px;pointer-events:auto;touch-action:none;display:flex;align-items:center;justify-content:center}
+  .tbtn.on{background:rgba(220,60,60,.6);color:#fff}
+  #btnE{right:4vw;bottom:6vh;width:78px;height:78px;font-size:22px;background:rgba(180,160,40,.3);border-color:rgba(255,230,120,.5);color:#ffe}
+  #btnRun{right:calc(4vw + 92px);bottom:5vh}
+  #btnCrouch{right:4vw;bottom:calc(6vh + 96px)}
+  #btnLight{right:calc(4vw + 92px);bottom:calc(5vh + 82px)}
+  @media (pointer:coarse){ #menu h1{font-size:40px;letter-spacing:4px} .diffbtn{width:80vw;max-width:340px} #howto{font-size:11px;padding:0 4vw} }
 </style>
 </head>
 <body>
@@ -55,6 +66,14 @@
   <div id="msg"></div>
   <div id="prompt"></div>
   <div id="crosshair"></div>
+</div>
+
+<div id="touchui">
+  <div id="joy"><div id="joyknob"></div></div>
+  <button class="tbtn" id="btnE">E</button>
+  <button class="tbtn" id="btnRun">RUN</button>
+  <button class="tbtn" id="btnCrouch">CROUCH</button>
+  <button class="tbtn" id="btnLight">LIGHT</button>
 </div>
 
 <div id="menu" class="overlay">
@@ -527,26 +546,73 @@ function updatePrompt(){ let p='';
   $('prompt').textContent=p; }
 
 /* ============================== INPUT ============================== */
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
 let flashOn=false;
+function toggleFlash(){ flashOn=!flashOn; flashlight.intensity=flashOn?18:0; sfxStep(0.08,900);
+  if(IS_TOUCH)$('btnLight').classList.toggle('on',flashOn); }
+
+/* ---- touch controls ---- */
+const touch={jx:0,jy:0,run:false};
+if(IS_TOUCH){
+  $('howto').innerHTML='LEFT STICK move &middot; DRAG right side to look &middot; RUN is loud, CROUCH is quiet<br>Find the 4 items hidden in the house, unlock the front door with [E], and escape.<br>If she catches you, you lose a day. Lose Day 5 and it\'s over.';
+  const joy=$('joy'),knob=$('joyknob'); let joyId=null,jcx=0,jcy=0;
+  joy.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; joyId=t.identifier;
+    const r=joy.getBoundingClientRect(); jcx=r.left+r.width/2; jcy=r.top+r.height/2; },{passive:false});
+  joy.addEventListener('touchmove',e=>{ e.preventDefault();
+    for(const t of e.changedTouches){ if(t.identifier!==joyId)continue;
+      let dx=t.clientX-jcx, dy=t.clientY-jcy; const L=Math.hypot(dx,dy),max=52;
+      if(L>max){dx*=max/L;dy*=max/L;}
+      knob.style.transform=`translate(${dx}px,${dy}px)`;
+      touch.jx=dx/max; touch.jy=dy/max; } },{passive:false});
+  const joyEnd=e=>{ for(const t of e.changedTouches){ if(t.identifier!==joyId)continue;
+    joyId=null; touch.jx=touch.jy=0; knob.style.transform=''; } };
+  joy.addEventListener('touchend',joyEnd); joy.addEventListener('touchcancel',joyEnd);
+
+  // look: drag anywhere not on the joystick/buttons
+  let lookId=null,lx=0,ly=0;
+  addEventListener('touchstart',e=>{ if(gamePhase!=='play')return;
+    for(const t of e.changedTouches){ if(t.identifier===joyId)continue;
+      if(e.target.closest&&e.target.closest('#joy,.tbtn'))continue;
+      if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; } } },{passive:false});
+  addEventListener('touchmove',e=>{ if(gamePhase!=='play')return; e.preventDefault();
+    for(const t of e.changedTouches){ if(t.identifier!==lookId)continue;
+      player.yaw-=(t.clientX-lx)*0.0045; player.pitch-=(t.clientY-ly)*0.0045;
+      player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch));
+      lx=t.clientX; ly=t.clientY; } },{passive:false});
+  const lookEnd=e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId)lookId=null; } };
+  addEventListener('touchend',lookEnd); addEventListener('touchcancel',lookEnd);
+
+  const hold=(id,fn)=>{ const b=$(id);
+    b.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();fn(true);b.classList.add('on');},{passive:false});
+    b.addEventListener('touchend',e=>{e.preventDefault();fn(false);b.classList.remove('on');},{passive:false}); };
+  hold('btnRun',v=>{touch.run=v;});
+  $('btnCrouch').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();
+    player.crouch=!player.crouch; $('btnCrouch').classList.toggle('on',player.crouch);},{passive:false});
+  $('btnLight').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleFlash();},{passive:false});
+  $('btnE').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();
+    if(gamePhase==='play')tryInteract();},{passive:false});
+}
 addEventListener('keydown',e=>{ keys[e.code]=true;
   if(gamePhase!=='play')return;
-  if(e.code==='KeyF'){ flashOn=!flashOn; flashlight.intensity=flashOn?18:0; sfxStep(0.08,900); }
+  if(e.code==='KeyF') toggleFlash();
   if(e.code==='KeyE') tryInteract();
   if(e.code==='KeyC') player.crouch=!player.crouch; });
 addEventListener('keyup',e=>{keys[e.code]=false;});
 addEventListener('mousemove',e=>{ if(!locked||gamePhase!=='play')return;
   player.yaw-=e.movementX*0.0022; player.pitch-=e.movementY*0.0022;
   player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch)); });
-function requestLock(){ renderer.domElement.requestPointerLock&&renderer.domElement.requestPointerLock(); }
-document.addEventListener('pointerlockchange',()=>{ locked=document.pointerLockElement===renderer.domElement;
+function requestLock(){ if(IS_TOUCH){locked=true;return;} renderer.domElement.requestPointerLock&&renderer.domElement.requestPointerLock(); }
+document.addEventListener('pointerlockchange',()=>{ if(IS_TOUCH)return;
+  locked=document.pointerLockElement===renderer.domElement;
   if(gamePhase==='play') $('pause').style.display=locked?'none':'flex'; });
-addEventListener('click',()=>{ if(gamePhase==='play'&&!locked) requestLock(); });
+addEventListener('click',()=>{ if(!IS_TOUCH&&gamePhase==='play'&&!locked) requestLock(); });
 
 /* ============================== MENU ============================== */
 document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient();
   DIFF=DIFFS[+b.dataset.d];
   $('menu').style.display='none'; $('hud').style.display='block';
+  if(IS_TOUCH)$('touchui').style.display='block';
   day=1; inventory={}; appliedToDoor={}; doorOpen=false;
   planks.forEach(p=>p.visible=true); padlock.visible=true; plate.visible=true;
   if(walls.indexOf(doorWallRef)<0) walls.push(doorWallRef);
@@ -571,10 +637,11 @@ function loop(){ requestAnimationFrame(loop);
     if(locked&&!hidden){
       let mx=0,mz=0;
       if(keys['KeyW'])mz-=1; if(keys['KeyS'])mz+=1; if(keys['KeyA'])mx-=1; if(keys['KeyD'])mx+=1;
-      const moving=mx||mz;
-      player.run=keys['ShiftLeft']&&!player.crouch&&moving;
+      mx+=touch.jx; mz+=touch.jy;
+      const moving=Math.hypot(mx,mz)>0.15;
+      player.run=(keys['ShiftLeft']||touch.run)&&!player.crouch&&moving;
       const sp=player.crouch?1.5:(player.run?5.2:3.0);
-      if(moving){ const L=Math.hypot(mx,mz); mx/=L; mz/=L;
+      if(moving){ const L=Math.max(1,Math.hypot(mx,mz)); mx/=L; mz/=L;
         const s=Math.sin(player.yaw),c=Math.cos(player.yaw);
         let nx=player.x+(mx*c + mz*s)*sp*dt, nz=player.z+(-mx*s + mz*c)*sp*dt;
         [nx,nz]=collide(nx,nz,PLAYER_R);
