@@ -1057,7 +1057,7 @@ document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>
   if(MP.pendingHost){ createRoom(dIdx); return; }
   startRun(dIdx,null,null); }));
 
-function startRun(dIdx,itemPlan,dayPlan){
+function startRun(dIdx,itemPlan,dayPlan,sync){
   DIFF=DIFFS[dIdx]; MP.diffIdx=dIdx; MP.escSent=false; MP.started=MP.active;
   $('menu').style.display='none'; $('lobby').style.display='none'; $('landing').style.display='none';
   $('hud').style.display='block';
@@ -1067,43 +1067,105 @@ function startRun(dIdx,itemPlan,dayPlan){
   planks.forEach(p=>p.visible=true); padlock.visible=true; plate.visible=true;
   if(walls0.indexOf(doorWallRef)<0) walls0.push(doorWallRef);
   doorPanel.rotation.y=0; doorPanel.position.set(0,1.3,0);
+  if(sync){ // joined a run already in progress: adopt team state before spawning
+    inventory=Object.assign({},sync.inv); appliedToDoor=Object.assign({},sync.app);
+    hasDart=!!sync.hasDart; day=sync.day||1;
+    (sync.taken||[]).forEach(id=>{ if(!inventory[id]&&!appliedToDoor[id]) inventory[id]=true; });
+    if(appliedToDoor.hammer) planks.forEach(p=>p.visible=false);
+    if(appliedToDoor.pliers) padlock.visible=false;
+    if(appliedToDoor.screw) plate.visible=false;
+    if(sync.doorOpen){ doorOpen=true; doorPanel.rotation.y=1.9; doorPanel.position.x=-1.15; doorPanel.position.z=-1.1;
+      const wi=walls0.indexOf(doorWallRef); if(wi>=0)walls0.splice(wi,1); } }
   spawnItemsFromPlan(itemPlan||makeSpawnPlan());
   resetWorldDay(dayPlan||makeDayPlan());
   resetMe();
-  $('dayline').textContent='DAY 1  ·  '+DIFF.name;
-  say('Day 1. Find the items. Get out.',3); updateItemsHUD();
+  $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name;
+  say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD();
   $('mpstatus').textContent=MP.active?('CO-OP · ROOM '+MP.code+' · YOU ARE '+MP.myId):'';
   gamePhase='play'; playing=true; requestLock(); }
 
 /* ============================== MULTIPLAYER (PeerJS) ============================== */
-const AV_COLORS=[0x4499ff,0xffaa44,0x44ffaa,0xff44dd];
+const AV_COLORS=[0x3d7dd8,0xd8842f,0x3bab6b,0xb14fc0];
+const AV_HAIR=[0x2a2018,0x0e0c0a,0x4a3018,0x1c1408];
 function buildAvatar(id){ const g=new THREE.Group();
-  const col=AV_COLORS[(parseInt(String(id).replace('P',''),10)-1)%4]||0x4499ff;
-  const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.26,0.85,4,10),new THREE.MeshStandardMaterial({color:col,roughness:0.7}));
-  body.position.y=0.95; body.castShadow=true; g.add(body);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.19,10,10),new THREE.MeshStandardMaterial({color:0xc9b099,roughness:0.9}));
-  head.position.y=1.62; g.add(head);
-  const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6),new THREE.MeshBasicMaterial({color:0xfff4d6}));
-  lamp.position.set(0,1.35,0.28); lamp.visible=false; g.add(lamp);
-  const spot=new THREE.SpotLight(0xfff4d6,0,14,0.5,0.6,1.2); spot.position.set(0,1.35,0.28);
-  const tgt=new THREE.Object3D(); tgt.position.set(0,1.2,5); g.add(tgt); spot.target=tgt; g.add(spot);
+  const idx=(parseInt(String(id).replace('P',''),10)-1)%4;
+  const col=AV_COLORS[idx]||0x3d7dd8;
+  const shirt=new THREE.MeshStandardMaterial({color:col,roughness:0.75});
+  const pants=new THREE.MeshStandardMaterial({color:0x272b33,roughness:0.9});
+  const skin=new THREE.MeshStandardMaterial({color:0xd8b28e,roughness:0.85});
+  const hairM=new THREE.MeshStandardMaterial({color:AV_HAIR[idx],roughness:0.95});
+  const shoeM=new THREE.MeshStandardMaterial({color:0x17130f,roughness:0.9});
+  // legs pivot at the hip so they can swing when walking
+  const mkLeg=side=>{ const L=new THREE.Group(); L.position.set(0.095*side,0.86,0);
+    const th=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.06,0.82,8),pants); th.position.y=-0.41; L.add(th);
+    const shoe=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.24),shoeM); shoe.position.set(0,-0.83,0.05); L.add(shoe);
+    g.add(L); return L; };
+  const legL=mkLeg(-1), legR=mkLeg(1);
+  // upper body group (drops down when crouching)
+  const up=new THREE.Group(); g.add(up);
+  const hips=new THREE.Mesh(new THREE.CylinderGeometry(0.155,0.165,0.18,10),pants); hips.position.y=0.92; hips.scale.z=0.78; up.add(hips);
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.175,0.15,0.55,10),shirt); torso.position.y=1.27; torso.scale.z=0.72; up.add(torso);
+  const shoulders=new THREE.Mesh(new THREE.SphereGeometry(0.17,10,8),shirt); shoulders.position.y=1.53; shoulders.scale.set(1.15,0.5,0.75); up.add(shoulders);
+  // arms pivot at the shoulder
+  const mkArm=side=>{ const A=new THREE.Group(); A.position.set(0.235*side,1.52,0); A.rotation.z=side*0.1;
+    const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.045,0.34,8),shirt); sleeve.position.y=-0.17; A.add(sleeve);
+    const fore=new THREE.Mesh(new THREE.CylinderGeometry(0.042,0.038,0.3,8),skin); fore.position.y=-0.48; A.add(fore);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8),skin); hand.position.y=-0.65; A.add(hand);
+    up.add(A); return A; };
+  const armL=mkArm(-1), armR=mkArm(1);
+  // neck + head with hair and eyes
+  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.06,0.09,8),skin); neck.position.y=1.62; up.add(neck);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.155,12,12),skin); head.position.y=1.77; head.scale.y=1.12; up.add(head);
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(0.162,12,12),hairM); hair.position.set(0,1.81,-0.025);
+  hair.scale.set(1,0.92,1); up.add(hair); // cap of hair over the skull
+  const fringe=new THREE.Mesh(new THREE.SphereGeometry(0.158,10,8,0,Math.PI*2,0,Math.PI*0.35),hairM);
+  fringe.position.set(0,1.8,0); up.add(fringe);
+  const eyeM=new THREE.MeshStandardMaterial({color:0x1a1a22,roughness:0.4});
+  for(const s of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(0.02,6,6),eyeM);
+    e.position.set(0.055*s,1.79,0.14); up.add(e); }
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(0.024,6,6),skin); nose.position.set(0,1.75,0.155); up.add(nose);
+  // flashlight in the right hand
+  const torch=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.035,0.16,8),new THREE.MeshStandardMaterial({color:0x444a52,metalness:0.6,roughness:0.4}));
+  torch.rotation.x=Math.PI/2; torch.position.set(0,-0.65,0.09); armR.add(torch);
+  const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.03,6,6),new THREE.MeshBasicMaterial({color:0xfff4d6}));
+  lamp.position.set(0,-0.65,0.18); lamp.visible=false; armR.add(lamp);
+  const spot=new THREE.SpotLight(0xfff4d6,0,14,0.5,0.6,1.2); spot.position.set(0.2,1.0,0.2);
+  const tgt=new THREE.Object3D(); tgt.position.set(0,0.9,5); g.add(tgt); spot.target=tgt; g.add(spot);
   // name tag
   const c=document.createElement('canvas'); c.width=128; c.height=40; const x=c.getContext('2d');
   x.fillStyle='#'+col.toString(16).padStart(6,'0'); x.font='bold 26px Courier New'; x.textAlign='center'; x.fillText(String(id),64,29);
   const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
-  tag.position.y=2.05; tag.scale.set(1.1,0.34,1); g.add(tag);
-  g.userData={body,lamp,spot}; scene.add(g); return g; }
+  tag.position.y=2.12; tag.scale.set(1.1,0.34,1); g.add(tag);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  g.userData={legL,legR,armL,armR,up,lamp,spot,tag,animT:0};
+  scene.add(g); return g; }
 function ensureAvatar(id){ if(!MP.avatars[id]) MP.avatars[id]=buildAvatar(id); return MP.avatars[id]; }
 function removeAvatar(id){ if(MP.avatars[id]){ scene.remove(MP.avatars[id]); delete MP.avatars[id]; } delete MP.net[id]; }
-function updateAvatars(dt){ for(const id in MP.net){ const n=MP.net[id], g=ensureAvatar(id);
+function updateAvatars(dt){ for(const id in MP.net){ const n=MP.net[id], g=ensureAvatar(id), u=g.userData;
   g.visible=!n.hidden && gamePhase==='play';
+  const ox=g.position.x, oz=g.position.z;
   g.position.x+=(n.x-g.position.x)*Math.min(1,dt*12);
   g.position.y+=(n.y-g.position.y)*Math.min(1,dt*12);
   g.position.z+=(n.z-g.position.z)*Math.min(1,dt*12);
   let dY=n.yaw-g.rotation.y; while(dY>Math.PI)dY-=2*Math.PI; while(dY<-Math.PI)dY+=2*Math.PI;
   g.rotation.y+=dY*Math.min(1,dt*12);
-  g.userData.body.scale.y=n.crouch?0.62:1;
-  g.userData.lamp.visible=!!n.flash; g.userData.spot.intensity=n.flash?6:0; } }
+  // walk cycle driven by actual movement
+  const moved=Math.hypot(g.position.x-ox,g.position.z-oz);
+  const moving=moved>dt*0.35;
+  u.animT+=moved*3.4;
+  const target=moving?Math.sin(u.animT)*0.55:0, k=Math.min(1,dt*10);
+  u.legL.rotation.x+=(target-u.legL.rotation.x)*k;
+  u.legR.rotation.x+=(-target-u.legR.rotation.x)*k;
+  u.armL.rotation.x+=(-target*0.8-u.armL.rotation.x)*k;
+  u.armR.rotation.x+=((n.flash?-0.9:target*0.8)-u.armR.rotation.x)*k; // torch arm raised when the light is on
+  // crouch: knees bend, upper body drops and leans forward
+  const cr=n.crouch?1:0;
+  u.up.position.y+=((cr?-0.38:0)-u.up.position.y)*k;
+  u.up.rotation.x+=((cr?0.25:0)-u.up.rotation.x)*k;
+  const ls=cr?0.56:1;
+  u.legL.scale.y+=(ls-u.legL.scale.y)*k; u.legR.scale.y+=(ls-u.legR.scale.y)*k;
+  u.tag.position.y=n.crouch?1.7:2.12;
+  u.lamp.visible=!!n.flash; u.spot.intensity=n.flash?6:0; } }
 
 function sendAll(o){ for(const c of MP.conns){ try{ if(c.open)c.send(o); }catch(e){} } }
 function netToHost(o){ try{ if(MP.host&&MP.host.open)MP.host.send(o); }catch(e){} }
@@ -1129,14 +1191,21 @@ function createRoom(dIdx){
     if(err.type==='unavailable-id'){ MP.code=makeCode(); peer.destroy(); createRoom(dIdx); }
     else $('lobbystatus').textContent='network error: '+err.type; });
   peer.on('connection',c=>{
-    if(MP.started||MP.conns.length>=3){ setTimeout(()=>c.close(),100); return; }
-    c.on('open',()=>{ const pid='P'+(MP.conns.length+2); c.__pid=pid; MP.conns.push(c);
+    if(MP.conns.length>=3){
+      c.on('open',()=>{ try{c.send({t:'reject',why:'room full'});}catch(e){}
+        setTimeout(()=>c.close(),300); }); return; }
+    c.on('open',()=>{ const pid='P'+(nextPid++); c.__pid=pid; MP.conns.push(c);
       MP.remote[pid]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
       c.send({t:'you',id:pid});
+      // joined (or finished connecting) after the run began: hand them the plan + current state
+      if(MP.started&&MP.startMsg) c.send({...MP.startMsg,
+        sync:{inv:inventory,app:appliedToDoor,doorOpen,hasDart,day,
+              taken:ITEMS.filter(i=>!itemMeshes.some(m=>m.userData.item.id===i.id)).map(i=>i.id)}});
       broadcastLobby(); });
     c.on('data',d=>hostData(c,d));
     c.on('close',()=>{ dropGuest(c); });
     c.on('error',()=>{ dropGuest(c); }); }); }
+let nextPid=2;
 function broadcastLobby(){ const ids=['P1'].concat(MP.conns.map(c=>c.__pid));
   updateLobbyList(ids); sendAll({t:'lobby',ids}); }
 function dropGuest(c){ const pid=c.__pid; if(!pid)return;
@@ -1148,8 +1217,8 @@ $('startmp').addEventListener('click',()=>{ if(!MP.isHost)return;
   DIFF=DIFFS[MP.diffIdx];
   hasDart=false; if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
   const items=makeSpawnPlan(), dayp=makeDayPlan(items);
-  MP.started=true;
-  sendAll({t:'start',d:MP.diffIdx,items,dayp});
+  MP.started=true; MP.startMsg={t:'start',d:MP.diffIdx,items,dayp};
+  sendAll(MP.startMsg);
   startRun(MP.diffIdx,items,dayp); });
 
 function joinRoom(code){
@@ -1179,9 +1248,10 @@ function hostData(c,d){ const id=c.__pid; if(!id)return;
     else if(d.k==='escape'){ if(doorOpen) doEv({k:'win',how:'door',who:id}); } } }
 
 function guestData(d){
-  if(d.t==='you'){ MP.myId=d.id; }
+  if(d.t==='reject'){ $('lobbystatus').textContent='could not join: '+d.why; return; }
+  if(d.t==='you'){ MP.myId=d.id; $('lobbystatus').textContent='connected! waiting for the host to start...'; }
   else if(d.t==='lobby'){ updateLobbyList(d.ids); }
-  else if(d.t==='start'){ startRun(d.d,d.items,d.dayp); }
+  else if(d.t==='start'){ startRun(d.d,d.items,d.dayp,d.sync); }
   else if(d.t==='ev'){ applyEv(d.ev); }
   else if(d.t==='st'){
     MP.gnet={x:d.g[0],z:d.g[1],y:d.g[2],yaw:d.g[3],state:d.g[4],stun:d.g[5],tid:d.g[6]};
