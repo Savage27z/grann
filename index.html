@@ -1465,6 +1465,18 @@ window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAva
     player.x=ax; player.z=az-3.4; player.y=0; player.yaw=Math.PI; player.pitch=-0.04;
     flashOn=!!opts.lit; flashlight.intensity=flashOn?28:0; $('msg').textContent=''; $('prompt').textContent=''; $('status').textContent='';
     return MP.profiles[id]; },
+  snapPreview(x,z,y,yaw,pitch,look){ gamePhase='play'; granny.obj.visible=false;
+    player.x=x; player.z=z; player.y=y;
+    if(look){ const dx=look[0]-x, dy=look[1]-y, dz=look[2]-z;
+      player.yaw=Math.atan2(dx,dz); player.pitch=Math.atan2(dy,Math.hypot(dx,dz)); }
+    else{ player.yaw=yaw; player.pitch=pitch??0; }
+    flashOn=true; flashlight.intensity=28; scene.fog.density=0.028;
+    $('msg').textContent=''; $('prompt').textContent=''; $('status').textContent='';
+    bulbs.forEach(b=>{ b.intensity=8; });
+    const eyeY=player.y+(player.crouch?CROUCH_EYE:EYE);
+    camera.position.set(player.x,eyeY,player.z);
+    camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
+    renderer.render(scene,camera); },
   get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},get day(){return day;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();},giveAll:()=>{ITEMS.forEach(i=>inventory[i.id]=true);updateItemsHUD();}};
 const clock=new THREE.Clock();
 let flickerT=0;
