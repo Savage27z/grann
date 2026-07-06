@@ -320,9 +320,11 @@ function drawGrannyFace(){ const c=document.getElementById('jscanvas'),x=c.getCo
   x.fillStyle='rgba(120,10,10,.7)'; for(let i=0;i<8;i++){ const bx=180+Math.random()*150; x.fillRect(bx,400+Math.random()*20,4,30+Math.random()*60); } }
 
 /* ============================== WORLD GEOMETRY (2 STOREYS) ============================== */
-/* Design grid 26×20, scaled to ~52×38 m — Granny-sized mansion feel. */
-const HX=13, HZ=10; // half-width / half-depth on the design grid
-const SX=2.0, SZ=1.9; // world scale (26×20 → ~52×38 m)
+/* Design grid 20×16, scaled to ~37×26 m — bigger than before, original room layout. */
+const HX=10, HZ=8; // half-width / half-depth on the design grid
+const SX=1.85, SZ=1.65; // world scale (20×16 → ~37×26 m)
+// interior faces of outer walls (design-grid coords, before SX/SZ)
+const NORTH_Z=-HZ+0.18, SOUTH_Z=HZ-0.18, WEST_X=-HX+0.18, EAST_X=HX-0.18;
 const walls0=[], walls1=[];        // wall boxes per storey {x,z,w,d}
 const colliders0=[], colliders1=[];// furniture per storey (collision only)
 const wallsFor=y=> y>2.0?walls1:walls0;
@@ -338,22 +340,18 @@ function seg(fl,x1,z1,x2,z2,gaps){ // wall along axis with gaps [[a,b],...] in t
     if(horiz) arr.push({x:(a+b)/2,z:z1,w:b-a,d:0.32}); else arr.push({x:x1,z:(a+b)/2,w:0.32,d:b-a}); } }
 
 /* ---- GROUND FLOOR: front door gap on south wall at x -5..-3 ---- */
-seg(0,-HX,-HZ, HX,-HZ); seg(0,-HX,HZ, HX,HZ, [[-5,-3]]); seg(0,-HX,-HZ,-HX,HZ); seg(0,HX,-HZ,HX,HZ);
-seg(0,-HX,0, HX,0, [[-8,-6],[-2,2],[6,10]]);     // main east-west wall + wider halls
-seg(0,-2,-HZ, -2,0, [[-6,-4]]);                  // bedroom | kitchen
-seg(0, 4,-HZ,  4,0, [[-6,-4]]);                  // kitchen | storage
-seg(0, 2, 0,  2,HZ, [[4,6]]);                    // living | study
-seg(0, 8,-HZ,  8,-2, [[-8,-5]]);                 // house | garage (door on north side)
-seg(0, 8,-2,  8,0);                              // garage | storage divider
-seg(0,-6, 6,  2,6);                              // living | dining divider
-seg(0,-2,-5,  2,-5);                             // bathroom nook wall
+seg(0,-HX,-HZ, HX,-HZ, [[0.4,2.0]]);              // north wall + back-door gap (kitchen)
+seg(0,-HX,HZ, HX,HZ, [[-5,-3]]); seg(0,-HX,-HZ,-HX,HZ); seg(0,HX,-HZ,HX,HZ);
+seg(0,-HX,0, HX,0, [[-7,-5],[0,2],[6,8]]);       // main east-west hall
+seg(0,-2,-HZ, -2,0, [[-5,-3]]);                  // bedroom | kitchen
+seg(0, 4,-HZ,  4,0, [[-5,-3]]);                  // kitchen | storage
+seg(0, 2, 0,  2,HZ, [[3,5]]);                    // living | study
 
 /* ---- UPPER FLOOR: sewing room NW, stair landing NE, guest bedroom SW, attic SE ---- */
 seg(1,-HX,-HZ, HX,-HZ); seg(1,-HX,HZ, HX,HZ); seg(1,-HX,-HZ,-HX,HZ); seg(1,HX,-HZ,HX,HZ);
-seg(1,-HX,0, HX,0, [[-7,-5],[5,9]]);             // east-west wall upstairs
-seg(1, 2,-HZ,  2,0, [[-6,-4]]);                  // sewing | landing
-seg(1,-3, 0, -3,HZ, [[4,6]]);                    // guest | attic
-seg(1, 8,-HZ,  8,-2, [[-8,-5]]);                 // upper garage wing
+seg(1,-HX,0, HX,0, [[-6,-4],[5,7]]);             // east-west wall upstairs
+seg(1, 2,-HZ,  2,0, [[-5,-3]]);                  // sewing | landing
+seg(1,-3, 0, -3,HZ, [[3,5]]);                    // guest | attic
 
 /* ---- STAIRCASE (in the storage room, rises south toward the landing) ---- */
 const STAIR={x1:8.2*SX,x2:9.8*SX,z1:-7.0*SZ,z2:-2.6*SZ};
@@ -372,9 +370,7 @@ function floorHeight(x,z,y){ // walkable height at (x,z), given current height y
 /* rooms granny patrols: [x,z,y] */
 const ROOMS = {
   bedroom:[-6,-4,0], kitchen:[1,-4,0], storage:[6.5,-4,0], living:[-4,4,0], study:[6,4,0],
-  dining:[-2,8,0], garage:[10.5,-6,0], bathroom:[0,-6.5,0],
-  sewing:[-4,-4,WALL_H], landing:[5.5,-4,WALL_H], guest:[-6.5,4,WALL_H], attic:[4,4,WALL_H],
-  nursery:[0,-6,WALL_H], loft:[10,-6,WALL_H] };
+  sewing:[-4,-4,WALL_H], landing:[5.5,-4,WALL_H], guest:[-6.5,4,WALL_H], attic:[4,4,WALL_H] };
 
 /* waypoint graph for granny — [x,z,y] */
 const WP=[
@@ -386,14 +382,11 @@ const WP=[
   /* 19-24 upper doorways */
   [2,-4,WALL_H],[-5,-0.9,WALL_H],[-5,0.9,WALL_H],[6,-0.9,WALL_H],[6,0.9,WALL_H],[-3,4,WALL_H],
   /* 25-27 stairs: top (on landing), mid (ramp), bottom (storage); 28 = clear exit into the storage room */
-  [9,-2.2,WALL_H],[9,-4.8,WALL_H*0.5],[9,-7.4,0],[6.8,-6.2,0],
-  /* 29-34 new wing: dining, garage, bathroom, upper loft */
-  [-2,8,0],[10.5,-6,0],[0,-6.5,0],[-1,7,0],[11,-4,0],[10,-6,WALL_H]
+  [9,-2.2,WALL_H],[9,-4.8,WALL_H*0.5],[9,-7.4,0],[6.8,-6.2,0]
 ];
 const EDGES=[[0,5],[5,1],[1,6],[6,2],[0,12],[12,7],[7,3],[1,13],[13,8],[8,3],[2,14],[14,9],[9,4],[3,10],[10,4],[3,11],
-  [3,29],[29,32],[7,32],[2,33],[33,30],[6,33],[1,31],
   [15,19],[19,16],[16,20],[20,21],[21,17],[15,22],[22,23],[23,18],[17,24],[24,18],
-  [15,25],[25,26],[26,27],[27,28],[28,2],[15,34],[34,18]];
+  [15,25],[25,26],[26,27],[27,28],[28,2]];
 // scale the plan up to the real house size
 WP.forEach(p=>{p[0]*=SX;p[1]*=SZ;});
 Object.values(ROOMS).forEach(r=>{r[0]*=SX;r[1]*=SZ;});
@@ -423,8 +416,8 @@ function collide(px,pz,r,y){ // circle vs boxes of the entity's storey, returns 
   return [px,pz]; }
 
 /* ============================== THREE SETUP ============================== */
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.042);
-const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,100);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.055);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,80);
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.getElementById('game').appendChild(renderer.domElement);
@@ -438,9 +431,9 @@ const wallTex=makeTex(x=>{ x.fillStyle='#4a4238'; x.fillRect(0,0,256,256);
   x.strokeStyle='rgba(0,0,0,.25)'; for(let i=0;i<7;i++){x.beginPath();x.moveTo(Math.random()*256,0);x.bezierCurveTo(Math.random()*256,80,Math.random()*256,180,Math.random()*256,256);x.stroke();} },2,1);
 const floorTex=makeTex(x=>{ x.fillStyle='#2b2118'; x.fillRect(0,0,256,256);
   for(let r=0;r<8;r++){ for(let i=0;i<4;i++){ x.fillStyle=`rgb(${38+Math.random()*18|0},${28+Math.random()*13|0},${18+Math.random()*9|0})`;
-    x.fillRect(i*64+(r%2)*32-32,r*32,63,31);} } x.fillStyle='rgba(0,0,0,.4)'; for(let i=0;i<400;i++)x.fillRect(Math.random()*256,Math.random()*256,2,2); },12,10);
+    x.fillRect(i*64+(r%2)*32-32,r*32,63,31);} } x.fillStyle='rgba(0,0,0,.4)'; for(let i=0;i<400;i++)x.fillRect(Math.random()*256,Math.random()*256,2,2); },10,8);
 const ceilTex=makeTex(x=>{ x.fillStyle='#241f1a'; x.fillRect(0,0,256,256); x.fillStyle='rgba(0,0,0,.3)';
-  for(let i=0;i<900;i++)x.fillRect(Math.random()*256,Math.random()*256,3,3); },10,8);
+  for(let i=0;i<900;i++)x.fillRect(Math.random()*256,Math.random()*256,3,3); },8,6);
 
 const matWall=new THREE.MeshStandardMaterial({map:wallTex,roughness:0.95});
 const matFloor=new THREE.MeshStandardMaterial({map:floorTex,roughness:0.9});
@@ -472,8 +465,8 @@ for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
   const ban=new THREE.Mesh(new THREE.BoxGeometry(0.1,1.0,STAIR.z2-STAIR.z1),matDark);
   ban.position.set(STAIR.x1-0.05,WALL_H/2+0.5,(STAIR.z1+STAIR.z2)/2); ban.rotation.x=0; scene.add(ban); }
 
-// front door mesh
-const FRONT={x:-4*SX,z:HZ*SZ}; // door gap centre on the south wall
+// front door mesh (south wall)
+const FRONT={x:-4*SX,z:SOUTH_Z*SZ};
 const frontDoor=new THREE.Group();
 const doorPanel=new THREE.Mesh(new THREE.BoxGeometry(2.6,2.6,0.14),new THREE.MeshStandardMaterial({color:0x5a3a1a,roughness:0.8}));
 doorPanel.position.y=1.3; frontDoor.add(doorPanel);
@@ -491,9 +484,9 @@ const doorWallRef=walls0[walls0.length-1];
 scene.add(new THREE.AmbientLight(0x334,0.35));
 const bulbs=[];
 for(const [rx,rz,ry] of Object.values(ROOMS)){
-  const L=new THREE.PointLight(0xffcc88,6,18,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
+  const L=new THREE.PointLight(0xffcc88,6,15,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
   const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:0x664422})); bm.position.copy(L.position); scene.add(bm); }
-const flashlight=new THREE.SpotLight(0xfff4d6,0,24,0.55,0.6,1.1); flashlight.castShadow=true;
+const flashlight=new THREE.SpotLight(0xfff4d6,0,20,0.55,0.6,1.1); flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);
 camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.12,-0.12,0); flashlight.target.position.set(0,0,-5);
 scene.add(camera);
@@ -509,9 +502,9 @@ box(-8.6,-0,-6.5,2.2,0.55,1.6,matDark);                 // bed
 box(-8.6,0.55,-7,2.2,0.25,0.6,matPillow,false);          // pillow
 box(-3.2,0,-7.2,1.4,0.8,0.8,matWood);                   // dresser
 // kitchen
-box(-1,0,-7.3,3,0.95,1.1,matWood);                      // counter
+box(-1,0,-7.3,3,0.95,1.1,matWood);                      // counter (north wall)
 box(2.6,0,-7.3,1.2,1.9,1.1,matDark);                    // fridge
-box(0.4,0,-2.6,1.8,0.78,1.1,matWood);                   // table (clear of the kitchen waypoint)
+box(0.4,0,-2.6,1.8,0.78,1.1,matWood);                   // table
 // storage (staircase occupies the east side)
 box(5.2,0,-6.8,1.2,0.9,1.2,matDark);                    // crate
 box(4.8,0,-1.2,1.4,2.2,0.9,matWood);                    // shelf
@@ -519,7 +512,7 @@ box(4.8,0,-1.2,1.4,2.2,0.9,matWood);                    // shelf
 box(-4,0,3.2,2.4,0.5,1.1,matDark);                      // sofa
 box(-4,0.5,3.75,2.4,0.55,0.25,matDark,false);
 box(-8.5,0,5.5,1.1,0.9,1.8,matWood);                    // cabinet
-box(-1,0,6.8,1.6,0.75,0.9,matWood);                     // side table
+box(-1,0,6.8,1.6,0.75,0.9,matWood);                     // side table (living)
 // study
 box(6.5,0,7,2.2,0.82,1,matWood);                        // desk
 box(8.9,0,3,1.2,2.1,1.6,matWood);                       // bookcase
@@ -541,27 +534,6 @@ box(-9,0,2,1.3,0.8,0.8,matWood,true,1);                 // dresser
 box(8,0,6.5,1.5,1.1,1.5,matDark,true,1);                // crates
 box(0,0,7,1.2,0.9,1.2,matDark,true,1);                  // chest
 box(4.5,0,6.8,1.8,0.8,0.9,matWood,true,1);              // old desk
-// dining room (south wing)
-box(-2,0,8.2,2.8,0.78,1.4,matWood);                    // dining table
-box(-5.2,0,8.5,1.1,0.85,0.7,matDark);                  // dining chair
-box(1.2,0,8.5,1.1,0.85,0.7,matDark);                    // dining chair
-box(-2,0,9.5,1.6,0.55,0.5,matWood);                     // sideboard
-// bathroom nook
-box(0,0,-6.8,1.2,0.85,0.9,matDark);                    // sink cabinet
-box(1.2,0,-6.5,0.5,1.6,0.5,matDark,false);              // toilet
-// garage wing
-box(10.5,0,-6.5,2.4,0.9,1.8,matDark);                  // workbench
-box(11.8,0,-8.5,1.6,1.2,2.2,matDark);                   // tool cabinet
-box(9.5,0,-8.8,2.2,0.55,1.1,matDark);                   // oil drums
-// garage car (visual only)
-{ const carG=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.55,3.8),new THREE.MeshStandardMaterial({color:0x3a4555,roughness:0.7,metalness:0.3}));
-  body.position.y=0.55; carG.add(body);
-  const cab=new THREE.Mesh(new THREE.BoxGeometry(1.7,0.45,1.6),body.material); cab.position.set(0,0.95,-0.4); carG.add(cab);
-  for(const sx of [-0.85,0.85]){ const wM=new THREE.MeshStandardMaterial({color:0x111,roughness:0.9});
-    for(const wz of [1.1,-1.1]){ const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.14,10),wM);
-      w.rotation.z=Math.PI/2; w.position.set(sx,0.32,wz); carG.add(w); } }
-  carG.position.set(10.5*SX,0,-7.2*SZ); carG.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;}}); scene.add(carG); }
 
 /* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
 const hideSpots=[];
@@ -578,24 +550,22 @@ function wardrobe(x,z,ry,fl=0){ x*=SX; z*=SZ; const g=new THREE.Group();
   hideSpots.push({x,z,ry,y:fl*WALL_H,standX:fx,standZ:fz,doors:[door,door2],kind:'wardrobe'}); }
 wardrobe(-9.2,-3,Math.PI/2); wardrobe(6.5,-7.3,0); wardrobe(9.2,5.8,-Math.PI/2);
 wardrobe(-1.5,-7.2,0,1); wardrobe(-9.3,7.2,Math.PI/2,1);
-wardrobe(10.5,-4.5,Math.PI/2);                            // garage wardrobe
 // under-bed hiding: bedroom bed (ground) + guest bed (upstairs); low eye, you can watch her feet
 hideSpots.push({x:-8.6*SX,z:-6.5*SZ,ry:0,y:0,standX:-8.6*SX,standZ:-5.2*SZ,kind:'bed'});
 hideSpots.push({x:-8.5*SX,z:5.5*SZ,ry:Math.PI,y:WALL_H,standX:-8.5*SX,standZ:4.2*SZ,kind:'bed'});
 
-/* ------ car escape: back door in the kitchen ------ */
+/* ------ car escape: back door on the kitchen north wall ------ */
 const backDoor=new THREE.Group();
 const bdPanel=new THREE.Mesh(new THREE.BoxGeometry(1.6,2.5,0.12),new THREE.MeshStandardMaterial({color:0x3f4a55,roughness:0.8}));
 bdPanel.position.y=1.25; backDoor.add(bdPanel);
 const bdSign=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.28,0.04),new THREE.MeshStandardMaterial({color:0x999966,roughness:0.6}));
 bdSign.position.set(0,2.05,0.09); backDoor.add(bdSign);
-backDoor.position.set(1.2*SX,0,-7.85*SZ); scene.add(backDoor);
-const CAR_POS={x:1.2*SX,z:-7.55*SZ};
+backDoor.position.set(1.2*SX,0,NORTH_Z*SZ); scene.add(backDoor);
+const CAR_POS={x:1.2*SX,z:(NORTH_Z+0.55)*SZ};
 
 /* ------ creaky floorboards (noise hazards) ------ */
 const creaks=[
   {x:-6,z:0,w:2.2,d:2.6,fl:0},{x:1,z:0,w:2.2,d:2.6,fl:0},{x:7,z:0,w:2.2,d:2.6,fl:0},
-  {x:-2,z:7,w:2.4,d:2.4,fl:0},{x:10,z:-5,w:2.2,d:2.6,fl:0},
   {x:9,z:-3.6,w:1.8,d:2.2,fl:1},{x:2,z:-4,w:2.2,d:2.2,fl:1},{x:-5,z:0,w:2.2,d:2.6,fl:1},
 ].map(c=>({...c,x:c.x*SX,z:c.z*SZ,w:c.w*SX,d:c.d*SZ,cool:0}));
 for(const c of creaks){ const m=new THREE.Mesh(new THREE.PlaneGeometry(c.w,c.d),
@@ -612,14 +582,12 @@ function vase(x,topY,z){ x*=SX; z*=SZ; const g=new THREE.Group();
 vase(-1.9,0.95,-7.1);            // kitchen counter
 vase(-1.2,0.75,6.6);             // living side table
 vase(7.3,0.82,6.9);              // study desk
-vase(-4.5,WALL_H+0.8,-6.3); vase(4.9,WALL_H+0.8,6.6);
-vase(-2,0.88,8.0);             // dining table
-vase(10.5,0.98,-6.2);          // garage workbench
+vase(-4.5,WALL_H+0.8,-6.3);      // sewing table
+vase(4.9,WALL_H+0.8,6.6);        // attic desk
 
 /* ------ bear traps (Normal+; placed fresh every day) ------ */
 const TRAP_SPOTS=[[-4.5,-2,0],[0,2.2,0],[4.5,3,0],[-2,5.5,0],[3,-6,0],[-7,2,0],
-  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1],
-  [-2,7.5,0],[10,-5,0],[11,-3,0],[0,-6,0]].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
+  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1]].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 let traps=[];
 function buildTrapMesh(){ const g=new THREE.Group();
   const base=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,12),new THREE.MeshStandardMaterial({color:0x555a5e,metalness:0.8,roughness:0.35}));
@@ -635,20 +603,17 @@ function placeTraps(spots){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
 /* ------ item spawn points [x,z,topY] — both storeys (expanded house) ------ */
 const UP=WALL_H;
 const SPAWNS=[
-  // ground — bedroom & kitchen
-  [-3.2,-7.2,0.8],[-8.5,-6.2,0.65],[-6.5,-1.2,0.05],
-  [-0.8,-7.0,0.95],[-0.2,-2.4,0.78],[2.6,-7.0,1.9],
-  // storage & living
-  [5.0,-6.5,0.9],[4.6,-0.8,2.2],[7.8,-4.2,0.05],
-  [-8.2,5.2,0.9],[-1.2,6.5,0.75],[-4.2,2.8,0.6],
-  // study & new wing
-  [6.5,6.8,0.82],[8.6,2.8,2.1],[4.0,1.6,0.6],
-  [-2.0,8.0,0.78],[0.2,-6.6,0.85],[10.5,-6.0,0.9],[11.5,-8.2,1.2],
+  // ground floor
+  [-3.2,-6.6,0.9],[-8.6,-5.5,0.65],[-6,-1,0.05],       // bedroom
+  [-1,-6.6,1.05],[0.4,-2.2,0.88],[2.6,-6.6,2.0],        // kitchen
+  [5.2,-6.1,1.0],[4.8,-0.7,1.6],[7.5,-4.5,0.05],        // storage
+  [-8.5,4.9,1.0],[-1,6.3,0.85],[-4,2.6,0.6],            // living
+  [6.5,6.5,0.92],[8.9,2.4,1.7],[4.2,1.3,0.7],           // study
   // upstairs
-  [-4.0,-6.3,UP+0.8],[-9.0,-3.8,UP+2.0],[0.6,-6.5,UP+0.9],[-6.8,-0.8,UP+0.6],
-  [2.8,-7.0,UP+1.1],[4.0,-0.8,UP+0.85],
-  [-8.8,4.8,UP+0.65],[-8.8,1.8,UP+0.8],
-  [7.8,6.0,UP+1.1],[0.2,6.8,UP+0.9],[4.5,6.6,UP+0.8],
+  [-4,-6.1,UP+0.9],[-9.2,-3.4,UP+1.4],[0.8,-6.4,UP+1.0],[-7,-0.6,UP+0.7], // sewing
+  [3,-6.8,UP+1.2],[4.2,-0.6,UP+0.95],                    // landing
+  [-8.5,4.9,UP+0.65],[-9,1.6,UP+0.9],                    // guest
+  [8,6,UP+1.2],[0,6.6,UP+1.0],[4.5,6.4,UP+0.9],          // attic
 ].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 
 function itemMeshFor(it){ let mesh;
@@ -1471,7 +1436,7 @@ function loop(){ requestAnimationFrame(loop);
         if(player.stepT>stepLen){ player.stepT=0; sfxStep(player.crouch?0.02:(player.run?0.09:0.045),120+Math.random()*30); }
         makeNoise(player.crouch?1.2:(player.run?10:4)); }
       // win check: walk through open door (ground floor only)
-      if(doorOpen && player.y<1 && player.z>HZ*SZ && Math.abs(player.x-FRONT.x)<1.9){ tryEscapeDoor(); }
+      if(doorOpen && player.y<1 && player.z>SOUTH_Z*SZ-0.4 && Math.abs(player.x-FRONT.x)<1.9){ tryEscapeDoor(); }
     }
     /* ---- hazards ---- */
     if(!hidden){
