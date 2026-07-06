@@ -632,86 +632,44 @@ function placeTraps(spots){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
   for(const [x,z,fl] of (spots||[])){ const obj=buildTrapMesh(); obj.position.set(x,fl*WALL_H,z); scene.add(obj);
     traps.push({obj,x,z,y:fl*WALL_H,sprung:false}); } }
 
-/* ------ item surfaces [x,z,topY,ry] — snapped to furniture tops, both storeys ------ */
+/* ------ item spawn points [x,z,topY] — both storeys (expanded house) ------ */
 const UP=WALL_H;
-const ITEM_SURFACES=[
+const SPAWNS=[
   // ground — bedroom & kitchen
-  [-3.2,-7.2,0.8,0.3],[-8.5,-6.2,0.65,1.1],[-6.5,-1.2,0.05,0],
-  [-0.8,-7.0,0.95,0],[-0.2,-2.4,0.78,0.5],[2.6,-7.0,1.9,0.2],
+  [-3.2,-7.2,0.8],[-8.5,-6.2,0.65],[-6.5,-1.2,0.05],
+  [-0.8,-7.0,0.95],[-0.2,-2.4,0.78],[2.6,-7.0,1.9],
   // storage & living
-  [5.0,-6.5,0.9,-0.4],[4.6,-0.8,2.2,0],[7.8,-4.2,0.05,0.8],
-  [-8.2,5.2,0.9,0],[-1.2,6.5,0.75,-0.2],[-4.2,2.8,0.6,0.4],
+  [5.0,-6.5,0.9],[4.6,-0.8,2.2],[7.8,-4.2,0.05],
+  [-8.2,5.2,0.9],[-1.2,6.5,0.75],[-4.2,2.8,0.6],
   // study & new wing
-  [6.5,6.8,0.82,-0.3],[8.6,2.8,2.1,0],[4.0,1.6,0.6,0],
-  [-2.0,8.0,0.78,0],[0.2,-6.6,0.85,0],[10.5,-6.0,0.9,0.5],[11.5,-8.2,1.2,0],
+  [6.5,6.8,0.82],[8.6,2.8,2.1],[4.0,1.6,0.6],
+  [-2.0,8.0,0.78],[0.2,-6.6,0.85],[10.5,-6.0,0.9],[11.5,-8.2,1.2],
   // upstairs
-  [-4.0,-6.3,UP+0.8,0],[-9.0,-3.8,UP+2.0,0.2],[0.6,-6.5,UP+0.9,0],[-6.8,-0.8,UP+0.6,0],
-  [2.8,-7.0,UP+1.1,0],[4.0,-0.8,UP+0.85,0],
-  [-8.8,4.8,UP+0.65,0],[-8.8,1.8,UP+0.8,0.3],
-  [7.8,6.0,UP+1.1,0],[0.2,6.8,UP+0.9,0],[4.5,6.6,UP+0.8,-0.2],
-].map(s=>[s[0]*SX,s[1]*SZ,s[2],s[3]]);
+  [-4.0,-6.3,UP+0.8],[-9.0,-3.8,UP+2.0],[0.6,-6.5,UP+0.9],[-6.8,-0.8,UP+0.6],
+  [2.8,-7.0,UP+1.1],[4.0,-0.8,UP+0.85],
+  [-8.8,4.8,UP+0.65],[-8.8,1.8,UP+0.8],
+  [7.8,6.0,UP+1.1],[0.2,6.8,UP+0.9],[4.5,6.6,UP+0.8],
+].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 
-const matMetal=new THREE.MeshStandardMaterial({color:0x888899,metalness:0.85,roughness:0.28});
-const matMetalDark=new THREE.MeshStandardMaterial({color:0x555a62,metalness:0.9,roughness:0.35});
-const matPlastic=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:0.65});
-const matGasCan=new THREE.MeshStandardMaterial({color:0xcc3311,roughness:0.55});
-const matGasCap=new THREE.MeshStandardMaterial({color:0x333,metalness:0.7,roughness:0.4});
-
-function shadowize(g){ g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}}); return g; }
-
-function itemMeshFor(it){
-  const g=new THREE.Group();
-  if(it.id==='key'||it.id==='carkey'){
-    const col=it.id==='carkey'?0x44aa55:0xffd34d;
-    const m=new THREE.MeshStandardMaterial({color:col,metalness:0.92,roughness:0.18});
-    const bow=new THREE.Mesh(new THREE.TorusGeometry(0.055,0.014,10,20),m); bow.rotation.x=Math.PI/2; bow.position.y=0.04; g.add(bow);
-    const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.028,0.14,0.012),m); shaft.position.set(0.04,-0.04,0); shaft.rotation.z=-0.35; g.add(shaft);
-    const bit=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.018,0.012),m); bit.position.set(0.07,-0.1,0); bit.rotation.z=-0.35; g.add(bit);
-    if(it.id==='carkey'){ const fob=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.05,0.02),new THREE.MeshStandardMaterial({color:0x222,roughness:0.5}));
-      fob.position.set(-0.02,0.04,0); g.add(fob); }
-  } else if(it.id==='hammer'){
-    const head=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.07,0.05),matMetalDark); head.position.set(0,0.06,0); g.add(head);
-    const claw=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.05,0.04),matMetalDark); claw.position.set(0.1,0.06,0); g.add(claw);
-    const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.026,0.28,8),matWood); handle.position.y=-0.1; g.add(handle);
-    g.rotation.z=Math.PI/2;
-  } else if(it.id==='pliers'){
-    const hM=new THREE.MeshStandardMaterial({color:0xcc4444,roughness:0.45,metalness:0.55});
-    const jawM=new THREE.MeshStandardMaterial({color:0xaaa,metalness:0.75,roughness:0.35});
-    const h1=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.12,0.03),hM); h1.position.set(-0.03,0.02,0); h1.rotation.z=0.18; g.add(h1);
-    const h2=h1.clone(); h2.position.x=0.03; h2.rotation.z=-0.18; g.add(h2);
-    const j1=new THREE.Mesh(new THREE.BoxGeometry(0.025,0.08,0.02),jawM); j1.position.set(-0.04,0.1,0); j1.rotation.z=0.35; g.add(j1);
-    const j2=j1.clone(); j2.position.x=0.04; j2.rotation.z=-0.35; g.add(j2);
-    g.rotation.x=Math.PI/2;
-  } else if(it.id==='gascan'){
-    const can=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.24,0.12),matGasCan); can.position.y=0.12; g.add(can);
-    const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.1,8),matGasCap); spout.position.set(0.06,0.28,0); spout.rotation.z=-0.6; g.add(spout);
-    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.03,8),matGasCap); cap.position.set(0.06,0.34,0); g.add(cap);
-    const handle=new THREE.Mesh(new THREE.TorusGeometry(0.06,0.012,6,12,Math.PI),matGasCap); handle.rotation.y=Math.PI/2; handle.position.set(0,0.26,0); g.add(handle);
-  } else { // screwdriver
-    const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.04,0.1,10),new THREE.MeshStandardMaterial({color:0xbb66ee,roughness:0.55}));
-    handle.position.y=0.05; g.add(handle);
-    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.18,8),matMetal); shaft.position.y=-0.04; g.add(shaft);
-    const tip=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.004,0.04,6),matMetalDark); tip.position.y=-0.14; g.add(tip);
-  }
-  return shadowize(g);
-}
-
-function placeOnSurface(mesh,surface){
-  const [sx,sz,sy,sry]=surface;
-  mesh.rotation.y=sry||0;
-  mesh.position.set(sx,sy,sz);
-  const box=new THREE.Box3().setFromObject(mesh);
-  mesh.position.y=sy-box.min.y;
-  mesh.position.x=sx; mesh.position.z=sz;
-}
-
-function makeItemHint(it,surface){
-  const [sx,sz,sy]=surface;
-  const ring=new THREE.Mesh(new THREE.RingGeometry(0.12,0.2,24),
-    new THREE.MeshBasicMaterial({color:it.color,transparent:true,opacity:0.28,depthWrite:false,side:THREE.DoubleSide}));
-  ring.rotation.x=-Math.PI/2; ring.position.set(sx,sy+0.008,sz);
-  return ring;
-}
+function itemMeshFor(it){ let mesh;
+  if(it.id==='key'||it.id==='carkey'){ mesh=new THREE.Group();
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(0.09,0.025,8,16),new THREE.MeshStandardMaterial({color:it.color,metalness:0.9,roughness:0.25}));
+    const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.22,0.04),ring.material); shaft.position.y=-0.16; mesh.add(ring,shaft); }
+  else if(it.id==='hammer'){ mesh=new THREE.Group();
+    const h=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.1,0.1),new THREE.MeshStandardMaterial({color:0x777,metalness:0.8,roughness:0.3}));
+    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.34,8),matWood); s.position.y=-0.18; mesh.add(h,s); }
+  else if(it.id==='pliers'){ mesh=new THREE.Group();
+    const a=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.34,0.05),new THREE.MeshStandardMaterial({color:it.color,metalness:0.6,roughness:0.4}));
+    a.rotation.z=0.25; const b=a.clone(); b.rotation.z=-0.25; mesh.add(a,b); }
+  else if(it.id==='gascan'){ mesh=new THREE.Group();
+    const can=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.32,0.14),new THREE.MeshStandardMaterial({color:it.color,roughness:0.6}));
+    const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.12,8),can.material); spout.position.set(0.09,0.2,0); spout.rotation.z=-0.5;
+    mesh.add(can,spout); }
+  else { mesh=new THREE.Group();
+    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.3,8),new THREE.MeshStandardMaterial({color:0x999,metalness:0.9,roughness:0.2}));
+    const hd=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.14,8),new THREE.MeshStandardMaterial({color:it.color,roughness:0.5}));
+    hd.position.y=0.2; mesh.add(s,hd); }
+  return mesh; }
 
 /* ============================== GRANNY MODEL ============================== */
 function buildGranny(){ const g=new THREE.Group();
@@ -768,35 +726,36 @@ function updateMpStatus(){ const nm=sanitizeName(PROFILE.name)||'Survivor';
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
 function makeSpawnPlan(){ // 6 items scattered across both storeys: 3 down + 3 up
-  const ground=shuffle(ITEM_SURFACES.filter(s=>s[2]<WALL_H)), upper=shuffle(ITEM_SURFACES.filter(s=>s[2]>=WALL_H));
+  const ground=shuffle(SPAWNS.filter(s=>s[2]<WALL_H)), upper=shuffle(SPAWNS.filter(s=>s[2]>=WALL_H));
   const spots=shuffle(ground.slice(0,3).concat(upper.slice(0,3)));
-  return ITEMS.map((it,i)=>({id:it.id,surface:spots[i]})); }
+  return ITEMS.map((it,i)=>({id:it.id,x:spots[i][0],z:spots[i][1],y:spots[i][2]})); }
 function spawnItemsFromPlan(plan){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
   plan.forEach(pl=>{ const it=ITEMS.find(a=>a.id===pl.id);
     if(inventory[it.id]||appliedToDoor[it.id])return;
-    const mesh=itemMeshFor(it);
-    placeOnSurface(mesh,pl.surface);
-    mesh.userData.item=it; mesh.userData.surface=pl.surface; scene.add(mesh); itemMeshes.push(mesh);
-    if(DIFF.hints){ const hint=makeItemHint(it,pl.surface); scene.add(hint); hintSprites.push(hint); mesh.userData.hint=hint; } }); }
+    const sx=pl.x, sz=pl.z, sy=pl.y; const mesh=itemMeshFor(it);
+    const gl=new THREE.PointLight(it.color,1.5,2.5); mesh.add(gl);
+    mesh.position.set(sx,sy+0.15,sz); mesh.userData.item=it; scene.add(mesh); itemMeshes.push(mesh);
+    if(DIFF.hints){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
+      const grd=x.createRadialGradient(32,32,2,32,32,30); grd.addColorStop(0,'#'+it.color.toString(16).padStart(6,'0')); grd.addColorStop(1,'transparent');
+      x.fillStyle=grd; x.fillRect(0,0,64,64);
+      const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,opacity:0.55}));
+      sp.position.set(sx,sy+0.7,sz); sp.scale.set(0.6,0.6,1); scene.add(sp); hintSprites.push(sp); mesh.userData.hint=sp; } }); }
 
 function pickDartSpot(itemPlan){
-  const used=new Set((itemPlan||[]).map(p=>p.surface[0]+','+p.surface[1]));
-  const free=ITEM_SURFACES.filter(s=>!used.has(s[0]+','+s[1]));
+  const used=new Set((itemPlan||itemMeshes.map(m=>({x:m.position.x,z:m.position.z}))).map(p=>p.x+','+p.z));
+  const free=SPAWNS.filter(s=>!used.has(s[0]+','+s[1]));
   return free[Math.random()*free.length|0]; }
 function makeDayPlan(itemPlan){ return {
   traps: shuffle(TRAP_SPOTS.slice()).slice(0,DIFF.traps),
   dart: (hasDart||dartMesh)?null:pickDartSpot(itemPlan) }; }
 function spawnDart(spot){ if(hasDart||dartMesh||!spot)return;
+  const [sx,sz,sy]=spot;
   dartMesh=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.1,8),new THREE.MeshStandardMaterial({color:0x2a5a3a,roughness:0.5}));
-  const flight=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018,0.06,8),new THREE.MeshStandardMaterial({color:0x66aa77,roughness:0.45}));
-  flight.position.y=0.05; dartMesh.add(body,flight);
-  const tip=new THREE.Mesh(new THREE.ConeGeometry(0.012,0.04,8),new THREE.MeshStandardMaterial({color:0xbbb,metalness:0.85,roughness:0.25}));
-  tip.position.y=-0.06; tip.rotation.x=Math.PI; dartMesh.add(tip);
-  shadowize(dartMesh);
-  dartMesh.rotation.z=0.4; dartMesh.rotation.x=0.15;
-  placeOnSurface(dartMesh,[spot[0],spot[1],spot[2],spot[3]||0.6]);
-  scene.add(dartMesh); }
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.26,8),new THREE.MeshStandardMaterial({color:0x44ff99,roughness:0.3,transparent:true,opacity:0.85}));
+  const needle=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.14,6),new THREE.MeshStandardMaterial({color:0xccc,metalness:0.9}));
+  needle.position.y=-0.2; dartMesh.add(tube,needle);
+  dartMesh.add(new THREE.PointLight(0x44ff99,1.2,2));
+  dartMesh.rotation.z=0.5; dartMesh.position.set(sx,sy+0.2,sz); scene.add(dartMesh); }
 
 function updateItemsHUD(){
   const row=it=>{ const st=appliedToDoor[it.id]?'USED ✓':(inventory[it.id]?'HELD ✓':'???');
@@ -1545,8 +1504,9 @@ function loop(){ requestAnimationFrame(loop);
     const eyeY=player.y+baseEye+(hidden?0:Math.sin(player.bobT)*0.035);
     camera.position.set(player.x,eyeY,player.z);
     camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
-    // hint rings pulse subtly on easy mode
-    hintSprites.forEach((s,i)=>{ s.material.opacity=0.18+Math.sin(t*1.8+i)*0.1; });
+    // hint sprites bob; items spin
+    hintSprites.forEach((s,i)=>{ s.position.y+=Math.sin(t*2+i)*0.0015; });
+    itemMeshes.forEach((m,i)=>{ m.rotation.y=t*1.5+i; });
     // proximity heartbeat + status
     const gd=Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y);
     heartBeat(Math.max(0,1-gd/9));
