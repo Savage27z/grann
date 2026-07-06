@@ -1372,7 +1372,21 @@ function grannyNetUpdate(dt){ const n=MP.gnet; if(!n)return;
   granny.obj.rotation.y=granny.yaw; }
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,floorHeight,fireDart,MP,startRun,SX,SZ,FRONT,CAR_POS,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},get day(){return day;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();},giveAll:()=>{ITEMS.forEach(i=>inventory[i.id]=true);updateItemsHUD();}};
+window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAvatar,setPlayerProfile,startRun,SX,SZ,FRONT,CAR_POS,
+  showAvatar(id,gender,name,opts={}){ opts=opts||{}; gamePhase='play'; MP.myId='CAM'; MP.active=true;
+    ['landing','menu','lobby','profile','daycard','endcard','pause','jumpscare'].forEach(i=>$(i).style.display='none');
+    $('hud').style.display='block';
+    for(const k in MP.avatars) dropAvatar(k); MP.profiles={}; MP.net={};
+    setPlayerProfile(id,{name:name||id,gender:gender==='female'?'female':'male',color:slotColor(id)});
+    const ax=opts.x??-5.6, az=opts.z??5.0;
+    MP.net[id]={x:ax,z:az,y:0,yaw:Math.PI,crouch:!!opts.crouch,hidden:false,flash:!!opts.flash};
+    ensureAvatar(id);
+    const gAv=MP.avatars[id]; if(gAv){ gAv.position.set(ax,0,az); gAv.rotation.y=Math.PI; }
+    granny.obj.visible=false; granny.stunT=999; granny.x=20;
+    player.x=ax; player.z=az-3.4; player.y=0; player.yaw=Math.PI; player.pitch=-0.04;
+    flashOn=!!opts.lit; flashlight.intensity=flashOn?28:0; $('msg').textContent=''; $('prompt').textContent=''; $('status').textContent='';
+    return MP.profiles[id]; },
+  get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},get day(){return day;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();},giveAll:()=>{ITEMS.forEach(i=>inventory[i.id]=true);updateItemsHUD();}};
 const clock=new THREE.Clock();
 let flickerT=0;
 function loop(){ requestAnimationFrame(loop);
