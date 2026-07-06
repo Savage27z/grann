@@ -6,6 +6,21 @@ A complete single-file Three.js first-person horror game inspired by *Granny*. E
 
 Open `index.html` in any modern browser (or serve it, e.g. `python3 -m http.server`, and visit `http://localhost:8000`). Hit ENTER GAME, pick a difficulty, and click to lock the mouse.
 
+## Multiplayer (2–4 player co-op)
+
+Escape together over peer-to-peer WebRTC (PeerJS — no game server needed, works on static hosting like Vercel):
+
+- **HOST CO-OP** — pick the difficulty, get a 4-letter room code, and share it. Press START when everyone's in.
+- **JOIN CO-OP** — type the room code and wait in the lobby.
+
+How co-op plays:
+
+- Everyone hunts items into a **shared team inventory**; anyone can strip a door lock or start the car, and **one player escaping wins it for the whole team**.
+- The host simulates Granny; she hears and chases **whoever** is closest/loudest, and the HUD tells you who she's after.
+- When a player is caught, only they get jumpscared and dragged back to the bedroom — but the **whole team loses the day**. Day 5 still ends it for everyone.
+- Other players appear as colored avatars with name tags; you'll see their flashlights sweep the dark.
+- The house was widened to a 28×20 m footprint (from 20×16) on both storeys to give a full lobby room to spread out.
+
 ## Goal
 
 You're trapped in Granny's **two-storey** house, and there are **two ways out**:
@@ -53,8 +68,9 @@ She patrols both storeys on a waypoint graph and uses the staircase like you do.
 
 ## Features
 
-- Two-storey, nine-room house with a working staircase, procedural canvas textures, flickering bulbs, and a shadow-casting flashlight
-- Landing page ("by savage") → difficulty select → play
+- Two-storey, nine-room, 28×20 m house with a working staircase, procedural canvas textures, flickering bulbs, and a shadow-casting flashlight
+- **2–4 player online co-op** via PeerJS: room codes, lobby, host-authoritative Granny, shared inventory, synced items/traps/vases/doors, player avatars with flashlights
+- Landing page ("by savage") → single player or host/join co-op → difficulty select → play
 - Two escape routes with separate item sets; randomized spawns from 26 locations, always split across both storeys; progress persists across days
 - Fully procedural WebAudio: ambient drone, proximity heartbeat, footsteps, creaks, shattering glass, trap snaps, dart shots, engine start, chase sting, and a layered jumpscare scream — no audio files
 - Canvas-drawn jumpscare face, day-transition cards, win/lose endings with your escape time

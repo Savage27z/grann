@@ -16,7 +16,20 @@
   #enterbtn{padding:18px 64px;background:#1a0808;border:2px solid #5a2020;color:#daa;font-family:inherit;font-size:22px;letter-spacing:5px;cursor:pointer;transition:all .2s;animation:pulse 2s infinite}
   #enterbtn:hover{background:#4a0d0d;border-color:#f44;color:#fff;transform:scale(1.06)}
   @keyframes pulse{0%,100%{box-shadow:0 0 8px rgba(255,0,0,.15)}50%{box-shadow:0 0 26px rgba(255,0,0,.45)}}
-  #landing .hint{color:#443;font-size:11px;letter-spacing:2px;margin-top:70px}
+  #landing .hint{color:#443;font-size:11px;letter-spacing:2px;margin-top:50px}
+  .mpbtn{display:block;width:280px;margin:9px auto 0 auto;padding:12px;background:#0d1016;border:1px solid #2a3550;color:#9ab;font-family:inherit;font-size:15px;letter-spacing:3px;cursor:pointer;transition:all .2s}
+  .mpbtn:hover{background:#16233c;border-color:#58f;color:#fff}
+  #joinrow{display:none;margin-top:10px}
+  #joincode{width:130px;padding:10px;background:#000;border:1px solid #2a3550;color:#8cf;font-family:inherit;font-size:20px;letter-spacing:6px;text-align:center;text-transform:uppercase}
+  #joingo{padding:10px 20px;background:#16233c;border:1px solid #58f;color:#cdf;font-family:inherit;font-size:15px;letter-spacing:2px;cursor:pointer;margin-left:8px}
+  #lobby{display:none;background:radial-gradient(ellipse at center,#0a0d14 0%,#000 85%);z-index:23}
+  #lobby h2{color:#8ab;font-size:16px;letter-spacing:4px;font-weight:normal;margin:0 0 8px 0}
+  #roomcode{color:#8cf;font-size:52px;letter-spacing:14px;margin:6px 0 20px 0;text-shadow:0 0 20px #48f}
+  #lobbylist{color:#9a8;font-size:16px;letter-spacing:2px;line-height:2;min-height:100px}
+  #lobbystatus{color:#665;font-size:12px;letter-spacing:2px;margin-top:16px}
+  #startmp{display:none;margin-top:22px;padding:14px 48px;background:#0d2a12;border:2px solid #2a7a3a;color:#8f8;font-family:inherit;font-size:18px;letter-spacing:4px;cursor:pointer}
+  #startmp:hover{background:#1a4a22;color:#fff}
+  #mpstatus{position:absolute;bottom:8px;right:12px;color:#569;font-size:11px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
   @keyframes flick{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.4}94%{opacity:1}97%{opacity:.6}98%{opacity:1}}
   #menu h2{color:#777;font-size:15px;font-weight:normal;margin:0 0 28px 0;letter-spacing:3px}
   .diffbtn{display:block;width:340px;margin:7px auto;padding:12px;background:#140a0a;border:1px solid #4a2020;color:#c9a;font-family:inherit;font-size:17px;letter-spacing:2px;cursor:pointer;transition:all .15s}
@@ -92,6 +105,7 @@
   <div id="msg"></div>
   <div id="prompt"></div>
   <div id="crosshair"></div>
+  <div id="mpstatus"></div>
 </div>
 
 <div id="touchui">
@@ -107,7 +121,21 @@
   <h1>GRANNY'S HOUSE</h1>
   <div class="by">BY SAVAGE</div>
   <button id="enterbtn">ENTER GAME</button>
+  <button class="mpbtn" id="hostbtn">HOST CO-OP (2-4 PLAYERS)</button>
+  <button class="mpbtn" id="joinbtn">JOIN CO-OP</button>
+  <div id="joinrow">
+    <input id="joincode" maxlength="4" placeholder="CODE" autocomplete="off">
+    <button id="joingo">JOIN</button>
+  </div>
   <div class="hint">HEADPHONES RECOMMENDED &middot; SHE HEARS EVERYTHING</div>
+</div>
+
+<div id="lobby" class="overlay">
+  <h2 id="lobbytitle">ROOM CODE</h2>
+  <div id="roomcode">····</div>
+  <div id="lobbylist"></div>
+  <button id="startmp">START GAME</button>
+  <div id="lobbystatus">share the code with your friends</div>
 </div>
 
 <div id="menu" class="overlay">
@@ -138,6 +166,7 @@
 
 <div id="pause" class="overlay"><h1>PAUSED</h1><p>Click anywhere to resume.<br><br>WASD move &middot; SHIFT run &middot; C crouch &middot; F flashlight &middot; E interact</p></div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -262,15 +291,19 @@ function drawGrannyFace(){ const c=document.getElementById('jscanvas'),x=c.getCo
   x.fillStyle='rgba(120,10,10,.7)'; for(let i=0;i<8;i++){ const bx=180+Math.random()*150; x.fillRect(bx,400+Math.random()*20,4,30+Math.random()*60); } }
 
 /* ============================== WORLD GEOMETRY (2 STOREYS) ============================== */
+/* The whole plan is defined on a 20x16 grid and scaled up to 28x20 for multiplayer. */
+const SX=1.4, SZ=1.25; // house scale factors (x: 20->28, z: 16->20)
 const walls0=[], walls1=[];        // wall boxes per storey {x,z,w,d}
 const colliders0=[], colliders1=[];// furniture per storey (collision only)
 const wallsFor=y=> y>2.0?walls1:walls0;
 const collidersFor=y=> y>2.0?colliders1:colliders0;
 function seg(fl,x1,z1,x2,z2,gaps){ // wall along axis with gaps [[a,b],...] in the varying coord
+  x1*=SX; x2*=SX; z1*=SZ; z2*=SZ;
   const arr = fl?walls1:walls0;
   const horiz = Math.abs(z2-z1)<0.001;
+  const gs=(gaps||[]).map(g=>horiz?[g[0]*SX,g[1]*SX]:[g[0]*SZ,g[1]*SZ]);
   const lo = horiz?Math.min(x1,x2):Math.min(z1,z2), hi = horiz?Math.max(x1,x2):Math.max(z1,z2);
-  let pts=[lo]; (gaps||[]).sort((a,b)=>a[0]-b[0]).forEach(g=>{pts.push(g[0],g[1]);}); pts.push(hi);
+  let pts=[lo]; gs.sort((a,b)=>a[0]-b[0]).forEach(g=>{pts.push(g[0],g[1]);}); pts.push(hi);
   for(let i=0;i<pts.length;i+=2){ const a=pts[i],b=pts[i+1]; if(b-a<0.05)continue;
     if(horiz) arr.push({x:(a+b)/2,z:z1,w:b-a,d:0.32}); else arr.push({x:x1,z:(a+b)/2,w:0.32,d:b-a}); } }
 
@@ -288,12 +321,12 @@ seg(1, 2,-8,  2,0, [[-5,-3]]);                   // sewing | landing
 seg(1,-3, 0, -3,8, [[3,5]]);                     // guest | attic
 
 /* ---- STAIRCASE (in the storage room, rises south toward the landing) ---- */
-const STAIR={x1:8.2,x2:9.8,z1:-7.0,z2:-2.6};
+const STAIR={x1:8.2*SX,x2:9.8*SX,z1:-7.0*SZ,z2:-2.6*SZ};
 // ground: block walking under the raised end of the stairs
-walls0.push({x:9.05,z:-2.45,w:1.9,d:0.14});
+walls0.push({x:9.05*SX,z:-2.45*SZ,w:1.9*SX,d:0.14});
 // upstairs: rails around the stairwell hole (open on the south/top end)
-walls1.push({x:9.05,z:-7.1,w:1.9,d:0.14});      // north end of the hole
-const stairRailW={x:8.12,z:-4.6,w:0.14,d:4.4};   // west side rail (both storeys can hit it)
+walls1.push({x:9.05*SX,z:-7.1*SZ,w:1.9*SX,d:0.14});      // north end of the hole
+const stairRailW={x:8.12*SX,z:-4.28*SZ,w:0.14,d:3.76*SZ};  // west side rail, ends short of the stair bottom so the exit stays clear
 walls0.push(stairRailW); walls1.push({...stairRailW});
 
 function floorHeight(x,z,y){ // walkable height at (x,z), given current height y
@@ -321,6 +354,9 @@ const WP=[
 const EDGES=[[0,5],[5,1],[1,6],[6,2],[0,12],[12,7],[7,3],[1,13],[13,8],[8,3],[2,14],[14,9],[9,4],[3,10],[10,4],[3,11],
   [15,19],[19,16],[16,20],[20,21],[21,17],[15,22],[22,23],[23,18],[17,24],[24,18],
   [15,25],[25,26],[26,27],[27,28],[28,2]];
+// scale the plan up to the real house size
+WP.forEach(p=>{p[0]*=SX;p[1]*=SZ;});
+Object.values(ROOMS).forEach(r=>{r[0]*=SX;r[1]*=SZ;});
 const ADJ=WP.map(()=>[]); EDGES.forEach(([a,b])=>{ADJ[a].push(b);ADJ[b].push(a);});
 function nearestWP(x,z,y){ let bi=0,bd=1e9; WP.forEach((p,i)=>{
   const d=(p[0]-x)**2+(p[1]-z)**2+((p[2]-y)*2.5)**2; if(d<bd){bd=d;bi=i;}}); return bi; }
@@ -347,7 +383,7 @@ function collide(px,pz,r,y){ // circle vs boxes of the entity's storey, returns 
   return [px,pz]; }
 
 /* ============================== THREE SETUP ============================== */
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.09);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.075);
 const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,60);
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -372,16 +408,16 @@ const matCeil=new THREE.MeshStandardMaterial({map:ceilTex,roughness:1});
 const matWood=new THREE.MeshStandardMaterial({color:0x4a3520,roughness:0.85});
 const matDark=new THREE.MeshStandardMaterial({color:0x2a1d12,roughness:0.9});
 
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(20.6,16.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
 // upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
 for(const s of [
-  {x:-0.95,z:0,w:18.3,d:16.6},                       // everything west of the stairwell
-  {x:9.15,z:-7.75,w:2.3,d:1.1},                      // north sliver
-  {x:9.15,z:2.75,w:2.3,d:11.1},                      // south of the stairwell
+  {x:(-10*SX+STAIR.x1)/2,z:0,w:STAIR.x1+10*SX,d:16*SZ+0.6},              // everything west of the stairwell
+  {x:(STAIR.x1+10*SX)/2,z:(-8*SZ+STAIR.z1)/2,w:10*SX-STAIR.x1,d:STAIR.z1+8*SZ}, // north sliver
+  {x:(STAIR.x1+10*SX)/2,z:(STAIR.z2+8*SZ)/2,w:10*SX-STAIR.x1,d:8*SZ-STAIR.z2},  // south of the stairwell
 ]){ const m=new THREE.Mesh(new THREE.BoxGeometry(s.w,0.24,s.d),matFloor);
   m.position.set(s.x,WALL_H-0.12,s.z); m.castShadow=m.receiveShadow=true; scene.add(m); }
 // roof (upper ceiling)
-const roof=new THREE.Mesh(new THREE.PlaneGeometry(20.6,16.6),matCeil); roof.rotation.x=Math.PI/2; roof.position.y=WALL_H*2; scene.add(roof);
+const roof=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matCeil); roof.rotation.x=Math.PI/2; roof.position.y=WALL_H*2; scene.add(roof);
 // walls, both storeys
 for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
   const m=new THREE.Mesh(new THREE.BoxGeometry(w.w,WALL_H,w.d),matWall);
@@ -397,24 +433,25 @@ for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
   ban.position.set(STAIR.x1-0.05,WALL_H/2+0.5,(STAIR.z1+STAIR.z2)/2); ban.rotation.x=0; scene.add(ban); }
 
 // front door mesh
+const FRONT={x:-4*SX,z:8*SZ}; // door gap centre on the south wall
 const frontDoor=new THREE.Group();
-const doorPanel=new THREE.Mesh(new THREE.BoxGeometry(1.9,2.6,0.14),new THREE.MeshStandardMaterial({color:0x5a3a1a,roughness:0.8}));
+const doorPanel=new THREE.Mesh(new THREE.BoxGeometry(2.6,2.6,0.14),new THREE.MeshStandardMaterial({color:0x5a3a1a,roughness:0.8}));
 doorPanel.position.y=1.3; frontDoor.add(doorPanel);
-const planks=[]; for(let i=0;i<3;i++){ const p=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.22,0.08),matDark);
-  p.position.set(0,0.7+i*0.7,-0.14); p.rotation.z=(i-1)*0.13; frontDoor.add(p); planks.push(p); }
+const planks=[]; for(let i=0;i<3;i++){ const p=new THREE.Mesh(new THREE.BoxGeometry(3.0,0.22,0.08),matDark);
+  p.position.set(0,0.7+i*0.7,-0.14); p.rotation.z=(i-1)*0.1; frontDoor.add(p); planks.push(p); }
 const padlock=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.3,0.1),new THREE.MeshStandardMaterial({color:0x888899,metalness:0.8,roughness:0.3}));
-padlock.position.set(0.75,1.05,-0.12); frontDoor.add(padlock);
+padlock.position.set(1.0,1.05,-0.12); frontDoor.add(padlock);
 const plate=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.5,0.06),new THREE.MeshStandardMaterial({color:0x556,metalness:0.7,roughness:0.4}));
-plate.position.set(0.7,1.45,-0.11); frontDoor.add(plate);
-frontDoor.position.set(-4,0,8); scene.add(frontDoor);
-walls0.push({x:-4,z:8,w:2,d:0.34}); // door blocks until opened
+plate.position.set(0.95,1.45,-0.11); frontDoor.add(plate);
+frontDoor.position.set(FRONT.x,0,FRONT.z); scene.add(frontDoor);
+walls0.push({x:FRONT.x,z:FRONT.z,w:2.8,d:0.34}); // door blocks until opened
 const doorWallRef=walls0[walls0.length-1];
 
 // lighting: dim moonlight + flickering bulbs on both storeys
 scene.add(new THREE.AmbientLight(0x334,0.35));
 const bulbs=[];
 for(const [rx,rz,ry] of Object.values(ROOMS)){
-  const L=new THREE.PointLight(0xffcc88,5,10,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
+  const L=new THREE.PointLight(0xffcc88,6,13,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
   const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:0x664422})); bm.position.copy(L.position); scene.add(bm); }
 const flashlight=new THREE.SpotLight(0xfff4d6,0,18,0.55,0.6,1.1); flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);
@@ -422,7 +459,8 @@ camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0
 scene.add(camera);
 
 /* ------ furniture (fl: 0 = ground, 1 = upstairs) ------ */
-function box(x,y,z,w,h,d,mat,solid=true,fl=0){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||matWood);
+function box(x,y,z,w,h,d,mat,solid=true,fl=0){ x*=SX; z*=SZ;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||matWood);
   m.position.set(x,fl*WALL_H+y+h/2,z); m.castShadow=m.receiveShadow=true; scene.add(m);
   if(solid)(fl?colliders1:colliders0).push({x,z,w:w+0.1,d:d+0.1}); return m; }
 const matPillow=new THREE.MeshStandardMaterial({color:0x777788,roughness:1});
@@ -466,7 +504,7 @@ box(4.5,0,6.8,1.8,0.8,0.9,matWood,true,1);              // old desk
 
 /* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
 const hideSpots=[];
-function wardrobe(x,z,ry,fl=0){ const g=new THREE.Group();
+function wardrobe(x,z,ry,fl=0){ x*=SX; z*=SZ; const g=new THREE.Group();
   const body=new THREE.Mesh(new THREE.BoxGeometry(1.3,2.3,0.9),new THREE.MeshStandardMaterial({color:0x3a2818,roughness:0.85}));
   body.position.y=1.15; body.castShadow=body.receiveShadow=true; g.add(body);
   const door=new THREE.Mesh(new THREE.BoxGeometry(0.58,2.1,0.06),matDark); door.position.set(-0.32,1.15,0.46); g.add(door);
@@ -481,8 +519,8 @@ wardrobe(-9.2,-3,Math.PI/2); wardrobe(6.5,-7.3,0); wardrobe(9.2,5.8,-Math.PI/2);
 wardrobe(-1.5,-7.2,0,1);      // sewing room upstairs
 wardrobe(-9.3,7.2,Math.PI/2,1); // guest bedroom upstairs
 // under-bed hiding: bedroom bed (ground) + guest bed (upstairs); low eye, you can watch her feet
-hideSpots.push({x:-8.6,z:-6.5,ry:0,y:0,standX:-8.6,standZ:-5.2,kind:'bed'});
-hideSpots.push({x:-8.5,z:5.5,ry:Math.PI,y:WALL_H,standX:-8.5,standZ:4.2,kind:'bed'});
+hideSpots.push({x:-8.6*SX,z:-6.5*SZ,ry:0,y:0,standX:-8.6*SX,standZ:-5.2*SZ,kind:'bed'});
+hideSpots.push({x:-8.5*SX,z:5.5*SZ,ry:Math.PI,y:WALL_H,standX:-8.5*SX,standZ:4.2*SZ,kind:'bed'});
 
 /* ------ car escape: back door in the kitchen ------ */
 const backDoor=new THREE.Group();
@@ -490,21 +528,21 @@ const bdPanel=new THREE.Mesh(new THREE.BoxGeometry(1.6,2.5,0.12),new THREE.MeshS
 bdPanel.position.y=1.25; backDoor.add(bdPanel);
 const bdSign=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.28,0.04),new THREE.MeshStandardMaterial({color:0x999966,roughness:0.6}));
 bdSign.position.set(0,2.05,0.09); backDoor.add(bdSign);
-backDoor.position.set(1.2,0,-7.85); scene.add(backDoor);
-const CAR_POS={x:1.2,z:-7.55};
+backDoor.position.set(1.2*SX,0,-7.85*SZ); scene.add(backDoor);
+const CAR_POS={x:1.2*SX,z:-7.55*SZ};
 
 /* ------ creaky floorboards (noise hazards) ------ */
 const creaks=[
   {x:-6,z:0,w:2.2,d:2.6,fl:0},{x:1,z:0,w:2.2,d:2.6,fl:0},{x:7,z:0,w:2.2,d:2.6,fl:0},
   {x:9,z:-3.6,w:1.8,d:2.2,fl:1},{x:2,z:-4,w:2.2,d:2.2,fl:1},{x:-5,z:0,w:2.2,d:2.6,fl:1},
-].map(c=>({...c,cool:0}));
+].map(c=>({...c,x:c.x*SX,z:c.z*SZ,w:c.w*SX,d:c.d*SZ,cool:0}));
 for(const c of creaks){ const m=new THREE.Mesh(new THREE.PlaneGeometry(c.w,c.d),
     new THREE.MeshStandardMaterial({color:0x1c140c,roughness:1}));
   m.rotation.x=-Math.PI/2; m.position.set(c.x,c.fl*WALL_H+0.012,c.z); scene.add(m); }
 
 /* ------ knockable vases (bump them and she hears it) ------ */
 const vases=[];
-function vase(x,topY,z){ const g=new THREE.Group();
+function vase(x,topY,z){ x*=SX; z*=SZ; const g=new THREE.Group();
   const body=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,0.34,10),new THREE.MeshStandardMaterial({color:0x8899aa,roughness:0.4}));
   body.position.y=0.17; g.add(body);
   g.position.set(x,topY,z); scene.add(g);
@@ -517,7 +555,7 @@ vase(4.9,WALL_H+0.8,6.6);        // attic desk
 
 /* ------ bear traps (Normal+; placed fresh every day) ------ */
 const TRAP_SPOTS=[[-4.5,-2,0],[0,2.2,0],[4.5,3,0],[-2,5.5,0],[3,-6,0],[-7,2,0],
-  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1]];
+  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1]].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 let traps=[];
 function buildTrapMesh(){ const g=new THREE.Group();
   const base=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,12),new THREE.MeshStandardMaterial({color:0x555a5e,metalness:0.8,roughness:0.35}));
@@ -526,9 +564,8 @@ function buildTrapMesh(){ const g=new THREE.Group();
   const j1=new THREE.Mesh(new THREE.TorusGeometry(0.26,0.03,6,12,Math.PI),jawM); j1.rotation.x=Math.PI/2; j1.rotation.z=0; j1.position.y=0.07; g.add(j1);
   const j2=j1.clone(); j2.rotation.y=Math.PI; g.add(j2); g.userData.jaws=[j1,j2];
   return g; }
-function placeTraps(){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
-  const spots=shuffle(TRAP_SPOTS.slice()).slice(0,DIFF.traps);
-  for(const [x,z,fl] of spots){ const obj=buildTrapMesh(); obj.position.set(x,fl*WALL_H,z); scene.add(obj);
+function placeTraps(spots){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
+  for(const [x,z,fl] of (spots||[])){ const obj=buildTrapMesh(); obj.position.set(x,fl*WALL_H,z); scene.add(obj);
     traps.push({obj,x,z,y:fl*WALL_H,sprung:false}); } }
 
 /* ------ item spawn points [x,z,topY] — both storeys ------ */
@@ -545,7 +582,7 @@ const SPAWNS=[
   [3,-6.8,UP+1.2],[4.2,-0.6,UP+0.95],                    // landing
   [-8.5,4.9,UP+0.65],[-9,1.6,UP+0.9],                    // guest
   [8,6,UP+1.2],[0,6.6,UP+1.0],[4.5,6.4,UP+0.9],          // attic
-];
+].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 
 /* ============================== GRANNY MODEL ============================== */
 function buildGranny(){ const g=new THREE.Group();
@@ -574,10 +611,19 @@ let itemMeshes=[], hintSprites=[];
 let hidden=false, hideSpot=null, hiddenSafe=false;
 let hasDart=false, dartMesh=null, runT=0;
 const SETTINGS={vol:+(localStorage.getItem('gh_vol')??0.8), sens:+(localStorage.getItem('gh_sens')??1)};
-const player={x:-8,z:-5,y:0,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
-const granny={obj:buildGranny(),x:4,z:4,y:WALL_H,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0};
+const player={x:-8*SX,z:-5*SZ,y:0,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
+const granny={obj:buildGranny(),x:4*SX,z:4*SZ,y:WALL_H,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0,tid:''};
 scene.add(granny.obj);
 const keys={};
+
+/* ---- multiplayer state (PeerJS co-op, host-authoritative granny) ---- */
+const MP={active:false,isHost:false,pendingHost:false,started:false,peer:null,host:null,conns:[],
+  remote:{},   // host only: latest input state per guest id
+  net:{},      // render targets for other players' avatars (all clients)
+  avatars:{},  // id -> THREE.Group
+  gnet:null,   // guest only: latest granny snapshot
+  myId:'P1', code:'', diffIdx:2, escSent:false, sendT:0};
+function nameOf(id){ return id===MP.myId?'YOU':('PLAYER '+String(id).replace('P','')); }
 
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
@@ -601,13 +647,14 @@ function itemMeshFor(it){ let mesh;
     hd.position.y=0.2; mesh.add(s,hd); }
   return mesh; }
 
-function spawnItems(){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
-  // 6 items scattered across both storeys: 3 downstairs + 3 upstairs, random rooms
+function makeSpawnPlan(){ // 6 items scattered across both storeys: 3 down + 3 up
   const ground=shuffle(SPAWNS.filter(s=>s[2]<WALL_H)), upper=shuffle(SPAWNS.filter(s=>s[2]>=WALL_H));
   const spots=shuffle(ground.slice(0,3).concat(upper.slice(0,3)));
-  let si=0;
-  ITEMS.forEach(it=>{ if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
-    const [sx,sz,sy]=spots[si++]; const mesh=itemMeshFor(it);
+  return ITEMS.map((it,i)=>({id:it.id,x:spots[i][0],z:spots[i][1],y:spots[i][2]})); }
+function spawnItemsFromPlan(plan){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
+  plan.forEach(pl=>{ const it=ITEMS.find(a=>a.id===pl.id);
+    if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
+    const sx=pl.x, sz=pl.z, sy=pl.y; const mesh=itemMeshFor(it);
     const gl=new THREE.PointLight(it.color,1.5,2.5); mesh.add(gl);
     mesh.position.set(sx,sy+0.15,sz); mesh.userData.item=it; scene.add(mesh); itemMeshes.push(mesh);
     if(DIFF.hints){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
@@ -616,10 +663,15 @@ function spawnItems(){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEa
       const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,opacity:0.55}));
       sp.position.set(sx,sy+0.7,sz); sp.scale.set(0.6,0.6,1); scene.add(sp); hintSprites.push(sp); mesh.userData.hint=sp; } }); }
 
-function spawnDart(){ if(hasDart||dartMesh)return;
-  const used=new Set(itemMeshes.map(m=>m.position.x+','+m.position.z));
-  const free=SPAWNS.filter(s=>!used.has(s[0]+','+s[2]));
-  const [sx,sz,sy]=free[Math.random()*free.length|0];
+function pickDartSpot(itemPlan){ // a free spawn point, avoiding the item spots
+  const used=new Set((itemPlan||itemMeshes.map(m=>({x:m.position.x,z:m.position.z}))).map(p=>p.x+','+p.z));
+  const free=SPAWNS.filter(s=>!used.has(s[0]+','+s[1]));
+  return free[Math.random()*free.length|0]; }
+function makeDayPlan(itemPlan){ return {
+  traps: shuffle(TRAP_SPOTS.slice()).slice(0,DIFF.traps),
+  dart: (hasDart||dartMesh)?null:pickDartSpot(itemPlan) }; }
+function spawnDart(spot){ if(hasDart||dartMesh||!spot)return;
+  const [sx,sz,sy]=spot;
   dartMesh=new THREE.Group();
   const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.26,8),new THREE.MeshStandardMaterial({color:0x44ff99,roughness:0.3,transparent:true,opacity:0.85}));
   const needle=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.14,6),new THREE.MeshStandardMaterial({color:0xccc,metalness:0.9}));
@@ -648,17 +700,22 @@ function grannySetPath(tx,tz,ty){ const a=nearestWP(granny.x,granny.z,granny.y),
   while(granny.pathI<granny.path.length-1){ const n=granny.path[granny.pathI+1];
     if(!sameFloor(n.y,granny.y) || losBlocked(granny.x,granny.z,n.x,n.z,wallsFor(granny.y))) break; granny.pathI++; } }
 
-function grannyCanSeePlayer(){ if(hidden&&hiddenSafe)return false;
-  if(!sameFloor(granny.y,player.y)) return false; // floor slab blocks sight
-  const dx=player.x-granny.x, dz=player.z-granny.z, dist=Math.hypot(dx,dz);
-  let range=DIFF.sight*(player.crouch?0.55:1)*(flashOn?1.25:0.85);
+function allPlayers(){ // everyone granny can perceive (host: local + all guests)
+  const arr=[{id:MP.myId,x:player.x,z:player.z,y:player.y,noise:player.noise,crouch:player.crouch,hidden,hiddenSafe,flash:flashOn}];
+  if(MP.active&&MP.isHost) for(const id in MP.remote){ const r=MP.remote[id];
+    arr.push({id,x:r.x,z:r.z,y:r.y,noise:r.noise,crouch:r.crouch,hidden:r.hidden,hiddenSafe:r.hiddenSafe,flash:r.flash}); }
+  return arr; }
+function grannyCanSee(p){ if(p.hidden&&p.hiddenSafe)return false;
+  if(!sameFloor(granny.y,p.y)) return false; // floor slab blocks sight
+  const dx=p.x-granny.x, dz=p.z-granny.z, dist=Math.hypot(dx,dz);
+  let range=DIFF.sight*(p.crouch?0.55:1)*(p.flash?1.25:0.85);
   if(granny.state==='ambush') range*=1.5; // lying in wait, senses sharpened
-  if(hidden) range=1.4;
+  if(p.hidden) range=1.4;
   if(dist>range) return false;
   if(!DIFF.instant){ const ang=Math.atan2(dx,dz); let dA=ang-granny.yaw;
     while(dA>Math.PI)dA-=2*Math.PI; while(dA<-Math.PI)dA+=2*Math.PI;
     if(Math.abs(dA)>DIFF.fov*Math.PI/360) return false; }
-  return !losBlocked(granny.x,granny.z,player.x,player.z,wallsFor(granny.y)); }
+  return !losBlocked(granny.x,granny.z,p.x,p.z,wallsFor(granny.y)); }
 
 function updateGranny(dt){
   const ud=granny.obj.userData;
@@ -670,31 +727,40 @@ function updateGranny(dt){
     return; }
   granny.obj.rotation.x=Math.min(0,granny.obj.rotation.x+dt*2.5);
   ud.glow.intensity=granny.state==='ambush'?0.6:2;
-  const dx=player.x-granny.x, dz=player.z-granny.z, dy=player.y-granny.y;
-  const dist=Math.hypot(dx,dz);
-  const dist3=Math.hypot(dx,dz,dy);
-  // hearing (muffled through the floor)
-  if(player.noise>0){ const hr=player.noise*DIFF.hearing;
-    const heardDist=sameFloor(granny.y,player.y)?dist3:dist3*1.7;
-    if(heardDist<hr && granny.state!=='chase'){ granny.state='investigate'; grannySetPath(player.x,player.z,player.y); granny.waitT=0;
-      if(heardDist<hr*0.7) $('status').textContent='SHE HEARD YOU'; } }
-  // vision
-  if(grannyCanSeePlayer()){ if(granny.state!=='chase'){ granny.state='chase'; sfxSting(); $('status').textContent='RUN!!'; }
-    granny.lastSeen={x:player.x,z:player.z,y:player.y}; granny.memT=DIFF.memory; }
+  const ps=allPlayers();
+  // the player she is currently after (fall back to nearest same-ish target)
+  let tp=ps.find(p=>p.id===granny.tid)||ps[0];
+  const dist3=Math.hypot(tp.x-granny.x,tp.z-granny.z,tp.y-granny.y);
+  const localD3=Math.hypot(player.x-granny.x,player.z-granny.z,player.y-granny.y);
+  // hearing (muffled through the floor) — loudest audible player wins
+  if(granny.state!=='chase'){ let best=null,bestR=1;
+    for(const p of ps){ if(p.noise<=0)continue; const hr=p.noise*DIFF.hearing;
+      const d3=Math.hypot(p.x-granny.x,p.z-granny.z,p.y-granny.y);
+      const heardDist=sameFloor(granny.y,p.y)?d3:d3*1.7;
+      if(heardDist<hr && heardDist/hr<bestR){ bestR=heardDist/hr; best=p; } }
+    if(best){ granny.state='investigate'; grannySetPath(best.x,best.z,best.y); granny.waitT=0;
+      if(bestR<0.7 && best.id===MP.myId) $('status').textContent='SHE HEARD YOU'; } }
+  // vision — chase the nearest visible player
+  let seen=null,seenD=1e9;
+  for(const p of ps){ if(!grannyCanSee(p))continue;
+    const d=Math.hypot(p.x-granny.x,p.z-granny.z); if(d<seenD){seenD=d;seen=p;} }
+  if(seen){ if(granny.state!=='chase'){ granny.state='chase'; sfxSting(); }
+    granny.tid=seen.id; tp=seen;
+    granny.lastSeen={x:seen.x,z:seen.z,y:seen.y}; granny.memT=DIFF.memory; }
   else if(granny.state==='chase'){ granny.memT-=dt;
     if(granny.memT<=0){
       if(Math.random()<DIFF.ambush){ // she lies in wait near where she lost you, silent
         granny.state='ambush'; granny.ambushT=8+Math.random()*7;
         if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); }
       else { granny.state='investigate'; if(granny.lastSeen) grannySetPath(granny.lastSeen.x,granny.lastSeen.z,granny.lastSeen.y); granny.waitT=0; }
-      $('status').textContent=''; } }
+      granny.tid=''; if($('status').textContent==='RUN!!')$('status').textContent=''; } }
 
   let speed=DIFF.speed, tx=null, tz=null;
   granny.forcePathT=Math.max(0,(granny.forcePathT||0)-dt);
   if(granny.state==='chase'){ speed=DIFF.speed*1.25;
-    if(granny.forcePathT<=0 && sameFloor(granny.y,player.y) && !losBlocked(granny.x,granny.z,player.x,player.z,wallsFor(granny.y))){ tx=player.x; tz=player.z; granny.path=[]; }
-    else { if(!granny.path.length||granny.pathI>=granny.path.length){ const L=granny.lastSeen||{x:player.x,z:player.z,y:player.y};
-        grannySetPath(player.x,player.z,player.y); }
+    if(granny.forcePathT<=0 && sameFloor(granny.y,tp.y) && !losBlocked(granny.x,granny.z,tp.x,tp.z,wallsFor(granny.y))){ tx=tp.x; tz=tp.z; granny.path=[]; }
+    else { if(!granny.path.length||granny.pathI>=granny.path.length){
+        grannySetPath(tp.x,tp.z,tp.y); }
       const n=granny.path[Math.min(granny.pathI,granny.path.length-1)]; tx=n.x; tz=n.z; } }
   else if(granny.state==='investigate'){
     if(granny.pathI>=granny.path.length){ granny.state='patrol'; granny.waitT=DIFF.patrolPause; }
@@ -720,14 +786,14 @@ function updateGranny(dt){
       // unstick: if a collider pins her, fall back to waypoint pathing for a bit
       if(Math.hypot(nx-granny.x,nz-granny.z)<speed*dt*0.25){ granny.stuckT=(granny.stuckT||0)+dt;
         if(granny.stuckT>0.8){ granny.stuckT=0;
-          if(granny.state==='chase'){ granny.forcePathT=2.5; grannySetPath(player.x,player.z,player.y); }
+          if(granny.state==='chase'){ granny.forcePathT=2.5; grannySetPath(tp.x,tp.z,tp.y); }
           else granny.pathI++; } }
       else granny.stuckT=0;
       granny.x=nx; granny.z=nz;
       granny.y=floorHeight(granny.x,granny.z,granny.y);
       granny.animT=(granny.animT||0)+speed*dt*2.4;
       granny.stepT+=speed*dt; if(granny.stepT>0.85){ granny.stepT=0;
-        const v=Math.max(0,1-dist3/14);
+        const v=Math.max(0,1-localD3/14);
         if(v>0.02 && granny.state!=='ambush') sfxStep(v*0.5,70+Math.random()*15); } } }
 
   // walk animation: arm swing + body sway (still when idle/ambushing)
@@ -738,99 +804,142 @@ function updateGranny(dt){
   granny.obj.position.set(granny.x,granny.y+(moving?Math.abs(Math.sin(ph))*0.05:0),granny.z);
   granny.obj.rotation.y=granny.yaw;
 
-  // catch
-  const catchR = hidden ? 0.9 : 1.05;
-  if(dist3<catchR && !(hidden&&hiddenSafe)) caughtByGranny();
+  // catch — anyone in reach
+  for(const p of ps){ const d3=Math.hypot(p.x-granny.x,p.z-granny.z,p.y-granny.y);
+    const catchR = p.hidden ? 0.9 : 1.05;
+    if(d3<catchR && !(p.hidden&&p.hiddenSafe)){ hostCaught(p.id); break; } }
 }
 
 /* ============================== CAUGHT / DAYS ============================== */
-function caughtByGranny(){ if(gamePhase!=='play')return; gamePhase='jumpscare';
-  document.exitPointerLock&&document.exitPointerLock();
-  sfxScream(); drawGrannyFace();
-  $('jumpscare').style.display='flex'; $('redflash').style.opacity='0.5';
-  setTimeout(()=>{ $('jumpscare').style.display='none'; $('redflash').style.opacity='0';
-    day++;
-    if(day>5){ endGame(false); return; }
-    $('daytitle').textContent='DAY '+day;
-    $('daysub').textContent=day===5?'This is your last chance. She will not miss again.':'She dragged you back to the bedroom...';
-    $('daycard').style.display='flex';
-    setTimeout(()=>{ $('daycard').style.display='none'; resetDay(); gamePhase='play'; requestLock(); },2600);
-  },1600); }
+function hostCaught(id){ if(gamePhase!=='play')return; // authority: host or solo
+  const nd=day+1;
+  if(nd>5){ netEv({k:'gameover'}); endGame(false); return; }
+  const plan=makeDayPlan();
+  netEv({k:'caught',who:id,day:nd,plan});
+  applyCaught(id,nd,plan); }
 
-function resetDay(){ player.x=-8; player.z=-5; player.y=0; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0; player.rootT=0;
-  hidden=false; hiddenSafe=false; hideSpot=null;
-  granny.x=4; granny.z=4; granny.y=WALL_H; granny.state='patrol'; granny.path=[]; granny.pathI=0; granny.waitT=2.5; granny.stunT=1.5; granny.memT=0; granny.lastSeen=null;
+function applyCaught(who,newDay,plan){ day=newDay;
+  resetWorldDay(plan);
+  if(who===MP.myId){
+    sfxScream(); drawGrannyFace();
+    $('jumpscare').style.display='flex'; $('redflash').style.opacity='0.5';
+    hidden=false; hiddenSafe=false; hideSpot=null; resetMe(); player.rootT=4.2;
+    setTimeout(()=>{ $('jumpscare').style.display='none'; $('redflash').style.opacity='0';
+      if(gamePhase!=='play')return;
+      $('daytitle').textContent='DAY '+day;
+      $('daysub').textContent=day===5?'This is your last chance. She will not miss again.':'She dragged you back to the bedroom...';
+      $('daycard').style.display='flex';
+      setTimeout(()=>{ $('daycard').style.display='none'; requestLock(); },2400); },1600); }
+  else say(nameOf(who)+' WAS CAUGHT! Day '+day+' begins.',3.5);
+  $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; }
+
+function resetMe(){ player.x=-8*SX; player.z=-5*SZ; player.y=0; player.yaw=Math.PI*0.75; player.pitch=0; player.noise=0; player.rootT=0;
+  hidden=false; hiddenSafe=false; hideSpot=null; }
+
+function resetWorldDay(plan){ // shared per-day world reset (granny sim only matters on the authority)
+  granny.x=4*SX; granny.z=4*SZ; granny.y=WALL_H; granny.state='patrol'; granny.path=[]; granny.pathI=0; granny.waitT=2.5; granny.stunT=1.5; granny.memT=0; granny.lastSeen=null; granny.tid='';
   granny.obj.rotation.x=0;
-  placeTraps(); spawnDart();
+  placeTraps(plan?plan.traps:[]); if(plan&&plan.dart) spawnDart(plan.dart);
   // vases stand back up each morning
   for(const v of vases){ v.fallen=false; v.vy=0; v.obj.position.set(v.x,v.y0,v.z); v.obj.rotation.set(0,0,0); }
-  $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; $('status').textContent='';
-  say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD(); }
+  $('status').textContent=''; updateItemsHUD(); }
 
 function fmtTime(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); }
-function endGame(won,how){ gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
+function endGame(won,how,who){ if(gamePhase==='end')return; gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
   $('hud').style.display='none'; $('touchui').style.display='none';
   $('endcard').style.display='flex';
-  if(won){ $('endtitle').textContent='YOU ESCAPED'; $('endtitle').style.color='#5f5';
+  if(won){ $('endtitle').textContent=(MP.active?'THE TEAM ESCAPED':'YOU ESCAPED'); $('endtitle').style.color='#5f5';
+    const pre=(who&&who!==MP.myId)?nameOf(who)+' made it out — the whole group escapes! ':'';
     const via=how==='car'
       ?'You floor it. Gravel sprays as the old car tears down the driveway — in the mirror, she stands in the doorway, screaming.'
       :'You slipped out the front door into the cold night air. Behind you, a scream of rage echoes through the house.';
     // save best day per difficulty
     const key='gh_best_'+DIFFS.indexOf(DIFF), prev=+(localStorage.getItem(key)||99);
     const isBest=day<prev; if(isBest) localStorage.setItem(key,day);
-    $('endtext').textContent=via+' Escaped on Day '+day+' in '+fmtTime(runT)+' ('+DIFF.name+').'+(isBest?' NEW BEST!':'');
+    $('endtext').textContent=pre+via+' Escaped on Day '+day+' in '+fmtTime(runT)+' ('+DIFF.name+').'+(isBest?' NEW BEST!':'');
     sfxUnlock(); }
   else{ $('endtitle').textContent='GAME OVER'; $('endtitle').style.color='#f22';
     $('endtext').textContent='Day 5 has ended after '+fmtTime(runT)+'. Nobody will ever find you. Granny keeps the house very, very quiet.';
     sfxSting(); } }
 
-/* ============================== INTERACTION ============================== */
+/* ============================== INTERACTION (net-aware) ============================== */
+function findInteractTarget(px,py,pz){ // what a player standing at (px,py,pz) can use
+  if(dartMesh && Math.hypot(dartMesh.position.x-px,dartMesh.position.z-pz)<1.4 && Math.abs(dartMesh.position.y-py-1)<2) return {k:'dartpick'};
+  for(let i=0;i<itemMeshes.length;i++){ const m=itemMeshes[i];
+    if(Math.hypot(m.position.x-px,m.position.z-pz)<1.4 && Math.abs(m.position.y-py-1)<2) return {k:'item',id:m.userData.item.id}; }
+  for(const h of hideSpots){ if(Math.hypot(h.standX-px,h.standZ-pz)<1.3 && Math.abs(h.y-py)<1.2) return {k:'hide',h}; }
+  if(py<1 && Math.hypot(CAR_POS.x-px,CAR_POS.z-pz)<1.6) return {k:'car'};
+  if(py<1 && Math.hypot(FRONT.x-px,FRONT.z-pz)<2.4) return {k:'door'};
+  return null; }
+
 function tryInteract(){
-  // exit hiding
+  // exit hiding (always local)
   if(hidden){ hidden=false; hiddenSafe=false;
     player.x=hideSpot.standX; player.z=hideSpot.standZ;
     say(hideSpot.kind==='bed'?'You crawl out.':'You climb out.'); hideSpot=null; makeNoise(3); return; }
-  // tranq dart pickup
-  if(dartMesh && Math.hypot(dartMesh.position.x-player.x,dartMesh.position.z-player.z)<1.4 && Math.abs(dartMesh.position.y-player.y-1)<2){
-    scene.remove(dartMesh); dartMesh=null; hasDart=true; sfxPickup();
-    say('TRANQ DART — '+(IS_TOUCH?'tap DART':'press Q')+' when you see her!',3.2); updateItemsHUD(); return; }
-  // items
-  for(let i=0;i<itemMeshes.length;i++){ const m=itemMeshes[i];
-    if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){
-      const it=m.userData.item; inventory[it.id]=true;
-      scene.remove(m); if(m.userData.hint)scene.remove(m.userData.hint);
-      itemMeshes.splice(i,1); sfxPickup(); makeNoise(5*(player.crouch?0.5:1));
-      say('Picked up: '+it.name); updateItemsHUD(); return; } }
-  // hiding spots
-  for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){
-      hideSpot=h; hidden=true;
-      // safe only if granny wasn't already chasing you into it
-      hiddenSafe = !(granny.state==='chase' && Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y)<5);
-      player.x=h.x+Math.sin(h.ry)*0.2; player.z=h.z+Math.cos(h.ry)*0.2; player.yaw=h.ry;
-      say(hiddenSafe?(h.kind==='bed'?'Under the bed. Watch her feet...':'Hidden. Stay quiet...'):'She saw you go in...!');
-      makeNoise(2.5); sfxDoor(); return; } }
-  // back door / car escape
-  if(player.y<1 && Math.hypot(CAR_POS.x-player.x,CAR_POS.z-player.z)<1.6){
-    if(inventory.carkey&&inventory.gascan){ sfxEngine(); say('The engine roars to life!'); endGame(true,'car'); }
-    else if(inventory.carkey) say('The car outside is out of gas. Find the GAS CAN.',3);
-    else if(inventory.gascan) say('You fuel the car... but you need the CAR KEY.',3);
-    else say('Granny\'s car is out back. You need the CAR KEY and GAS CAN.',3);
-    makeNoise(2); return; }
-  // front door
-  if(player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2){
+  const t=findInteractTarget(player.x,player.y,player.z);
+  if(!t){ say('Nothing here.',1.2); return; }
+  if(t.k==='hide'){ const h=t.h; hideSpot=h; hidden=true;
+    // safe only if granny wasn't already chasing you into it
+    hiddenSafe = !(granny.state==='chase' && granny.tid===MP.myId && Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y)<5);
+    player.x=h.x+Math.sin(h.ry)*0.2; player.z=h.z+Math.cos(h.ry)*0.2; player.yaw=h.ry;
+    say(hiddenSafe?(h.kind==='bed'?'Under the bed. Watch her feet...':'Hidden. Stay quiet...'):'She saw you go in...!');
+    makeNoise(2.5); sfxDoor(); return; }
+  if(MP.active&&!MP.isHost){ netToHost({t:'act',k:'use'}); return; } // host revalidates & broadcasts
+  execUse(t,MP.myId); }
+
+function execUse(t,who){ // authority only: turn an interaction into events
+  if(t.k==='dartpick'){ if(!dartMesh)return; doEv({k:'dartpick',who}); return; }
+  if(t.k==='item'){ doEv({k:'pickup',id:t.id,who}); return; }
+  if(t.k==='car'){
+    if(inventory.carkey&&inventory.gascan){ doEv({k:'win',how:'car',who}); }
+    else if(inventory.carkey) doEv({k:'note',who,msg:'The car outside is out of gas. Find the GAS CAN.'});
+    else if(inventory.gascan) doEv({k:'note',who,msg:'You fuel the car... but you need the CAR KEY.'});
+    else doEv({k:'note',who,msg:'Granny\'s car is out back. You need the CAR KEY and GAS CAN.'});
+    return; }
+  if(t.k==='door'){
     const order=['hammer','pliers','screw','key'];
     for(const id of order){ if(appliedToDoor[id])continue;
-      const it=ITEMS.find(a=>a.id===id);
       if(!inventory[id]){ const need={hammer:'The door is boarded up. You need a HAMMER.',pliers:'A padlock. You need CUTTING PLIERS.',screw:'A screwed-on plate covers the lock. You need a SCREWDRIVER.',key:'One lock left. You need the MASTER KEY.'};
-        say(need[id],3); makeNoise(2); return; }
-      appliedToDoor[id]=true; delete inventory[id]; sfxUnlock(); makeNoise(9);
-      if(id==='hammer'){ planks.forEach(p=>p.visible=false); say('You pry off the planks. LOUD.'); }
-      if(id==='pliers'){ padlock.visible=false; say('Snip. The padlock falls.'); }
-      if(id==='screw'){ plate.visible=false; say('The plate comes off, revealing the keyhole.'); }
-      if(id==='key'){ say('CLICK. The door is open. GO!'); doorOpen=true; doorPanel.rotation.y=1.9; doorPanel.position.x=-0.85; doorPanel.position.z=-0.8;
+        doEv({k:'note',who,msg:need[id]}); return; }
+      doEv({k:'stage',id,who}); return; } } }
+
+function doEv(ev){ netEv(ev); applyEv(ev); } // broadcast + apply locally
+
+function applyEv(ev){ // world mutations, run identically on every client
+  const mine=ev.who===MP.myId;
+  switch(ev.k){
+    case 'note': if(mine){ say(ev.msg,3); makeNoise(2); } break;
+    case 'dartpick': if(dartMesh){ scene.remove(dartMesh); dartMesh=null; } hasDart=true; sfxPickup();
+      say(mine?('TRANQ DART — '+(IS_TOUCH?'tap DART':'press Q')+' when you see her!'):(nameOf(ev.who)+' took the TRANQ DART.'),3.2);
+      updateItemsHUD(); break;
+    case 'pickup': { const i=itemMeshes.findIndex(m=>m.userData.item.id===ev.id); if(i<0)break;
+      const m=itemMeshes[i], it=m.userData.item; inventory[it.id]=true;
+      scene.remove(m); if(m.userData.hint)scene.remove(m.userData.hint);
+      itemMeshes.splice(i,1); sfxPickup(); if(mine) makeNoise(5*(player.crouch?0.5:1));
+      say((mine?'Picked up: ':nameOf(ev.who)+' found: ')+it.name); updateItemsHUD(); break; }
+    case 'stage': { const id=ev.id; appliedToDoor[id]=true; delete inventory[id]; sfxUnlock(); if(mine) makeNoise(9);
+      const pre=mine?'':nameOf(ev.who)+': ';
+      if(id==='hammer'){ planks.forEach(p=>p.visible=false); say(pre+'The planks come off. LOUD.'); }
+      if(id==='pliers'){ padlock.visible=false; say(pre+'Snip. The padlock falls.'); }
+      if(id==='screw'){ plate.visible=false; say(pre+'The plate comes off, revealing the keyhole.'); }
+      if(id==='key'){ say('CLICK. The front door is OPEN. GO!'); doorOpen=true; doorPanel.rotation.y=1.9; doorPanel.position.x=-1.15; doorPanel.position.z=-1.1;
         const wi=walls0.indexOf(doorWallRef); if(wi>=0)walls0.splice(wi,1); sfxDoor(); }
-      updateItemsHUD(); return; } }
-  say('Nothing here.',1.2); }
+      updateItemsHUD(); break; }
+    case 'win': if(ev.how==='car') sfxEngine(); endGame(true,ev.how,ev.who); break;
+    case 'gameover': endGame(false); break;
+    case 'caught': applyCaught(ev.who,ev.day,ev.plan); break;
+    case 'vase': { const v=vases[ev.i]; if(v&&!v.fallen){ v.fallen=true; v.vy=0.001; } break; }
+    case 'trap': { const tr=traps[ev.i]; if(tr&&!tr.sprung){ tr.sprung=true;
+      tr.obj.userData.jaws.forEach(j=>{j.rotation.x=Math.PI/2*0.15;j.position.y=0.16;}); } break; }
+    case 'dartres': hasDart=false; updateItemsHUD();
+      if(ev.hit){ say((mine?'Direct hit!':nameOf(ev.who)+' hit her!')+' She\'s down for '+ev.dur+' seconds.',3); if($('status').textContent==='RUN!!')$('status').textContent=''; }
+      else say(mine?'The dart flies into the darkness. Wasted.':nameOf(ev.who)+' wasted the dart.',2.5);
+      break; } }
+
+function tryEscapeDoor(){ if(gamePhase!=='play')return;
+  if(MP.active&&!MP.isHost){ if(!MP.escSent){ MP.escSent=true; netToHost({t:'act',k:'escape'}); } return; }
+  doEv({k:'win',how:'door',who:MP.myId}); }
 
 function updatePrompt(){ let p='';
   if(hidden) p='[E] LEAVE HIDING SPOT';
@@ -838,21 +947,23 @@ function updatePrompt(){ let p='';
     if(!p) for(const m of itemMeshes){ if(Math.hypot(m.position.x-player.x,m.position.z-player.z)<1.4 && Math.abs(m.position.y-player.y-1)<2){p='[E] TAKE '+m.userData.item.name;break;} }
     if(!p) for(const h of hideSpots){ if(Math.hypot(h.standX-player.x,h.standZ-player.z)<1.3 && Math.abs(h.y-player.y)<1.2){p=h.kind==='bed'?'[E] HIDE UNDER BED':'[E] HIDE IN WARDROBE';break;} }
     if(!p && player.y<1 && Math.hypot(CAR_POS.x-player.x,CAR_POS.z-player.z)<1.6) p='[E] BACK DOOR (CAR)';
-    if(!p && player.y<1 && Math.hypot(-4-player.x,8-player.z)<2.2) p=doorOpen?'WALK THROUGH THE DOOR!':'[E] FRONT DOOR'; }
+    if(!p && player.y<1 && Math.hypot(FRONT.x-player.x,FRONT.z-player.z)<2.4) p=doorOpen?'WALK THROUGH THE DOOR!':'[E] FRONT DOOR'; }
   $('prompt').textContent=p; }
 
 /* ------ tranq dart ------ */
 function fireDart(){ if(!hasDart||gamePhase!=='play'||hidden)return;
-  hasDart=false; updateItemsHUD(); sfxDart(); makeNoise(6);
-  const dx=granny.x-player.x, dz=granny.z-player.z, dist=Math.hypot(dx,dz);
+  sfxDart(); makeNoise(6);
+  if(MP.active&&!MP.isHost){ netToHost({t:'act',k:'dart',x:player.x,z:player.z,y:player.y,yaw:player.yaw}); return; }
+  hostFireDart(MP.myId,player.x,player.z,player.y,player.yaw); }
+function hostFireDart(who,px,pz,py,yaw){ if(!hasDart)return;
+  const dx=granny.x-px, dz=granny.z-pz, dist=Math.hypot(dx,dz);
   let hit=false;
-  if(sameFloor(granny.y,player.y) && dist<14 && granny.stunT<=0){
-    const ang=Math.atan2(-dx,-dz); let dA=ang-player.yaw;
+  if(sameFloor(granny.y,py) && dist<14 && granny.stunT<=0){
+    const ang=Math.atan2(-dx,-dz); let dA=ang-yaw;
     while(dA>Math.PI)dA-=2*Math.PI; while(dA<-Math.PI)dA+=2*Math.PI;
-    if(Math.abs(dA)<0.35 && !losBlocked(player.x,player.z,granny.x,granny.z,wallsFor(player.y))) hit=true; }
-  if(hit){ granny.stunT=DIFF.stun; granny.state='patrol'; granny.path=[]; $('status').textContent='';
-    say('Direct hit! She\'s down for '+DIFF.stun+' seconds.',3); }
-  else say('The dart flies into the darkness. Wasted.',2.5); }
+    if(Math.abs(dA)<0.35 && !losBlocked(px,pz,granny.x,granny.z,wallsFor(py))) hit=true; }
+  if(hit){ granny.stunT=DIFF.stun; granny.state='patrol'; granny.path=[]; granny.tid=''; }
+  doEv({k:'dartres',hit,who,dur:DIFF.stun}); }
 
 /* ============================== INPUT ============================== */
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
@@ -929,22 +1040,191 @@ $('setVol').addEventListener('input',e=>{ SETTINGS.vol=+e.target.value; localSto
 $('setSens').addEventListener('input',e=>{ SETTINGS.sens=+e.target.value; localStorage.setItem('gh_sens',SETTINGS.sens); });
 
 $('enterbtn').addEventListener('click',()=>{
-  audioInit(); AC.resume&&AC.resume(); startAmbient();
+  audioInit(); AC.resume&&AC.resume(); startAmbient(); MP.pendingHost=false;
   $('landing').style.display='none'; $('menu').style.display='flex'; });
+$('hostbtn').addEventListener('click',()=>{
+  audioInit(); AC.resume&&AC.resume(); startAmbient(); MP.pendingHost=true;
+  $('landing').style.display='none'; $('menu').style.display='flex';
+  $('menu').querySelector('h2').textContent='HOST: PICK THE DIFFICULTY FOR YOUR ROOM'; });
+$('joinbtn').addEventListener('click',()=>{ $('joinrow').style.display='block'; $('joincode').focus(); });
+$('joingo').addEventListener('click',()=>{ const code=$('joincode').value.trim().toUpperCase();
+  if(code.length!==4)return; audioInit(); AC.resume&&AC.resume(); startAmbient(); joinRoom(code); });
+$('joincode').addEventListener('keydown',e=>{ if(e.key==='Enter')$('joingo').click(); e.stopPropagation(); });
+
 document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient();
-  DIFF=DIFFS[+b.dataset.d];
-  $('menu').style.display='none'; $('hud').style.display='block';
+  const dIdx=+b.dataset.d;
+  if(MP.pendingHost){ createRoom(dIdx); return; }
+  startRun(dIdx,null,null); }));
+
+function startRun(dIdx,itemPlan,dayPlan){
+  DIFF=DIFFS[dIdx]; MP.diffIdx=dIdx; MP.escSent=false; MP.started=MP.active;
+  $('menu').style.display='none'; $('lobby').style.display='none'; $('landing').style.display='none';
+  $('hud').style.display='block';
   if(IS_TOUCH)$('touchui').style.display='block';
   day=1; runT=0; inventory={}; appliedToDoor={}; doorOpen=false; hasDart=false;
   if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
   planks.forEach(p=>p.visible=true); padlock.visible=true; plate.visible=true;
   if(walls0.indexOf(doorWallRef)<0) walls0.push(doorWallRef);
   doorPanel.rotation.y=0; doorPanel.position.set(0,1.3,0);
-  spawnItems(); resetDay(); gamePhase='play'; playing=true; requestLock(); }));
+  spawnItemsFromPlan(itemPlan||makeSpawnPlan());
+  resetWorldDay(dayPlan||makeDayPlan());
+  resetMe();
+  $('dayline').textContent='DAY 1  ·  '+DIFF.name;
+  say('Day 1. Find the items. Get out.',3); updateItemsHUD();
+  $('mpstatus').textContent=MP.active?('CO-OP · ROOM '+MP.code+' · YOU ARE '+MP.myId):'';
+  gamePhase='play'; playing=true; requestLock(); }
+
+/* ============================== MULTIPLAYER (PeerJS) ============================== */
+const AV_COLORS=[0x4499ff,0xffaa44,0x44ffaa,0xff44dd];
+function buildAvatar(id){ const g=new THREE.Group();
+  const col=AV_COLORS[(parseInt(String(id).replace('P',''),10)-1)%4]||0x4499ff;
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.26,0.85,4,10),new THREE.MeshStandardMaterial({color:col,roughness:0.7}));
+  body.position.y=0.95; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.19,10,10),new THREE.MeshStandardMaterial({color:0xc9b099,roughness:0.9}));
+  head.position.y=1.62; g.add(head);
+  const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6),new THREE.MeshBasicMaterial({color:0xfff4d6}));
+  lamp.position.set(0,1.35,0.28); lamp.visible=false; g.add(lamp);
+  const spot=new THREE.SpotLight(0xfff4d6,0,14,0.5,0.6,1.2); spot.position.set(0,1.35,0.28);
+  const tgt=new THREE.Object3D(); tgt.position.set(0,1.2,5); g.add(tgt); spot.target=tgt; g.add(spot);
+  // name tag
+  const c=document.createElement('canvas'); c.width=128; c.height=40; const x=c.getContext('2d');
+  x.fillStyle='#'+col.toString(16).padStart(6,'0'); x.font='bold 26px Courier New'; x.textAlign='center'; x.fillText(String(id),64,29);
+  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
+  tag.position.y=2.05; tag.scale.set(1.1,0.34,1); g.add(tag);
+  g.userData={body,lamp,spot}; scene.add(g); return g; }
+function ensureAvatar(id){ if(!MP.avatars[id]) MP.avatars[id]=buildAvatar(id); return MP.avatars[id]; }
+function removeAvatar(id){ if(MP.avatars[id]){ scene.remove(MP.avatars[id]); delete MP.avatars[id]; } delete MP.net[id]; }
+function updateAvatars(dt){ for(const id in MP.net){ const n=MP.net[id], g=ensureAvatar(id);
+  g.visible=!n.hidden && gamePhase==='play';
+  g.position.x+=(n.x-g.position.x)*Math.min(1,dt*12);
+  g.position.y+=(n.y-g.position.y)*Math.min(1,dt*12);
+  g.position.z+=(n.z-g.position.z)*Math.min(1,dt*12);
+  let dY=n.yaw-g.rotation.y; while(dY>Math.PI)dY-=2*Math.PI; while(dY<-Math.PI)dY+=2*Math.PI;
+  g.rotation.y+=dY*Math.min(1,dt*12);
+  g.userData.body.scale.y=n.crouch?0.62:1;
+  g.userData.lamp.visible=!!n.flash; g.userData.spot.intensity=n.flash?6:0; } }
+
+function sendAll(o){ for(const c of MP.conns){ try{ if(c.open)c.send(o); }catch(e){} } }
+function netToHost(o){ try{ if(MP.host&&MP.host.open)MP.host.send(o); }catch(e){} }
+function netEv(ev){ if(MP.active&&MP.isHost) sendAll({t:'ev',ev}); }
+function mpHazard(kind,i){ if(!MP.active)return;
+  if(MP.isHost) netEv({k:kind,i}); else netToHost({t:'act',k:kind,i}); }
+
+function makeCode(){ let s=''; for(let i=0;i<4;i++)s+='ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]; return s; }
+function showLobby(code,asHost){ $('menu').style.display='none'; $('landing').style.display='none';
+  $('lobby').style.display='flex'; $('roomcode').textContent=code;
+  $('startmp').style.display=asHost?'block':'none';
+  $('lobbystatus').textContent=asHost?'share the code with your friends':'waiting for the host to start...';
+  updateLobbyList(asHost?['P1']:[]); }
+function updateLobbyList(ids){ $('lobbylist').innerHTML=ids.map(id=>
+  '<div>'+id+(id==='P1'?' (HOST)':'')+(id===MP.myId?' — YOU':'')+'</div>').join('')||'<div>connecting...</div>'; }
+
+function createRoom(dIdx){
+  MP.pendingHost=false; MP.active=true; MP.isHost=true; MP.myId='P1'; MP.diffIdx=dIdx; DIFF=DIFFS[dIdx];
+  MP.code=makeCode(); showLobby('····',true); $('lobbystatus').textContent='creating room...';
+  const peer=new Peer('grannyhouse-'+MP.code); MP.peer=peer;
+  peer.on('open',()=>{ $('roomcode').textContent=MP.code; $('lobbystatus').textContent='share the code with your friends'; });
+  peer.on('error',err=>{
+    if(err.type==='unavailable-id'){ MP.code=makeCode(); peer.destroy(); createRoom(dIdx); }
+    else $('lobbystatus').textContent='network error: '+err.type; });
+  peer.on('connection',c=>{
+    if(MP.started||MP.conns.length>=3){ setTimeout(()=>c.close(),100); return; }
+    c.on('open',()=>{ const pid='P'+(MP.conns.length+2); c.__pid=pid; MP.conns.push(c);
+      MP.remote[pid]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
+      c.send({t:'you',id:pid});
+      broadcastLobby(); });
+    c.on('data',d=>hostData(c,d));
+    c.on('close',()=>{ dropGuest(c); });
+    c.on('error',()=>{ dropGuest(c); }); }); }
+function broadcastLobby(){ const ids=['P1'].concat(MP.conns.map(c=>c.__pid));
+  updateLobbyList(ids); sendAll({t:'lobby',ids}); }
+function dropGuest(c){ const pid=c.__pid; if(!pid)return;
+  MP.conns=MP.conns.filter(x=>x!==c); delete MP.remote[pid]; removeAvatar(pid);
+  if(MP.started){ if(gamePhase==='play') say(nameOf(pid)+' disconnected.',3); }
+  else broadcastLobby(); }
+
+$('startmp').addEventListener('click',()=>{ if(!MP.isHost)return;
+  DIFF=DIFFS[MP.diffIdx];
+  hasDart=false; if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
+  const items=makeSpawnPlan(), dayp=makeDayPlan(items);
+  MP.started=true;
+  sendAll({t:'start',d:MP.diffIdx,items,dayp});
+  startRun(MP.diffIdx,items,dayp); });
+
+function joinRoom(code){
+  MP.active=true; MP.isHost=false; MP.code=code;
+  showLobby(code,false); $('lobbystatus').textContent='connecting...';
+  const peer=new Peer(); MP.peer=peer;
+  peer.on('error',err=>{ if(err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
+    else $('lobbystatus').textContent='network error: '+err.type; });
+  peer.on('open',()=>{ const c=peer.connect('grannyhouse-'+code,{reliable:true}); MP.host=c;
+    c.on('open',()=>{ $('lobbystatus').textContent='connected! waiting for the host to start...'; });
+    c.on('data',guestData);
+    const bye=()=>{ if(gamePhase==='play'||gamePhase==='end'){
+        $('endtitle').textContent='HOST LEFT'; $('endtitle').style.color='#f22';
+        $('endtext').textContent='The connection to the host was lost.';
+        $('endcard').style.display='flex'; gamePhase='end'; }
+      else $('lobbystatus').textContent='disconnected from host.'; };
+    c.on('close',bye); c.on('error',bye); }); }
+
+function hostData(c,d){ const id=c.__pid; if(!id)return;
+  if(d.t==='in'){ const r=MP.remote[id]; if(!r)return;
+    r.x=d.x; r.z=d.z; r.y=d.y; r.yaw=d.yaw; r.crouch=!!d.c; r.hidden=!!d.h; r.hiddenSafe=!!d.hs; r.flash=!!d.f; r.noise=d.n||0;
+    MP.net[id]={x:d.x,z:d.z,y:d.y,yaw:d.yaw,crouch:!!d.c,hidden:!!d.h,flash:!!d.f}; }
+  else if(d.t==='act'){ const r=MP.remote[id]; if(!r||gamePhase!=='play')return;
+    if(d.k==='use'){ const t=findInteractTarget(r.x,r.y,r.z); if(t&&t.k!=='hide') execUse(t,id); }
+    else if(d.k==='dart') hostFireDart(id,d.x,d.z,d.y,d.yaw);
+    else if(d.k==='vase'||d.k==='trap') doEv({k:d.k,i:d.i});
+    else if(d.k==='escape'){ if(doorOpen) doEv({k:'win',how:'door',who:id}); } } }
+
+function guestData(d){
+  if(d.t==='you'){ MP.myId=d.id; }
+  else if(d.t==='lobby'){ updateLobbyList(d.ids); }
+  else if(d.t==='start'){ startRun(d.d,d.items,d.dayp); }
+  else if(d.t==='ev'){ applyEv(d.ev); }
+  else if(d.t==='st'){
+    MP.gnet={x:d.g[0],z:d.g[1],y:d.g[2],yaw:d.g[3],state:d.g[4],stun:d.g[5],tid:d.g[6]};
+    if(d.day!==day){ day=d.day; $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; }
+    for(const id in d.ps){ if(id===MP.myId)continue;
+      const p=d.ps[id]; MP.net[id]={x:p[0],z:p[1],y:p[2],yaw:p[3],crouch:!!p[4],hidden:!!p[5],flash:!!p[6]}; }
+    for(const id in MP.net){ if(!(id in d.ps)) removeAvatar(id); } } }
+
+function netTick(dt){ if(!MP.active||!MP.started)return;
+  MP.sendT+=dt; if(MP.sendT<0.08)return; MP.sendT=0;
+  if(MP.isHost){
+    const ps={}; ps[MP.myId]=[player.x,player.z,player.y,player.yaw,player.crouch?1:0,hidden?1:0,flashOn?1:0];
+    for(const id in MP.remote){ const r=MP.remote[id]; ps[id]=[r.x,r.z,r.y,r.yaw,r.crouch?1:0,r.hidden?1:0,r.flash?1:0]; }
+    sendAll({t:'st',g:[granny.x,granny.z,granny.y,granny.yaw,granny.state,granny.stunT>0?1:0,granny.tid||''],ps,day}); }
+  else netToHost({t:'in',x:player.x,z:player.z,y:player.y,yaw:player.yaw,
+    c:player.crouch?1:0,h:hidden?1:0,hs:hiddenSafe?1:0,f:flashOn?1:0,n:player.noise}); }
+
+function grannyNetUpdate(dt){ const n=MP.gnet; if(!n)return;
+  const ox=granny.x, oz=granny.z;
+  granny.x+=(n.x-granny.x)*Math.min(1,dt*9);
+  granny.z+=(n.z-granny.z)*Math.min(1,dt*9);
+  granny.y+=(n.y-granny.y)*Math.min(1,dt*9);
+  let dY=n.yaw-granny.yaw; while(dY>Math.PI)dY-=2*Math.PI; while(dY<-Math.PI)dY+=2*Math.PI;
+  granny.yaw+=dY*Math.min(1,dt*9);
+  granny.state=n.state; granny.tid=n.tid; granny.stunT=n.stun?1:0;
+  const ud=granny.obj.userData;
+  if(n.stun){ granny.obj.rotation.x=Math.max(-1.35,granny.obj.rotation.x-dt*3); ud.glow.intensity=0.2; }
+  else{ granny.obj.rotation.x=Math.min(0,granny.obj.rotation.x+dt*2.5);
+    ud.glow.intensity=granny.state==='ambush'?0.6:2; }
+  const moved=Math.hypot(granny.x-ox,granny.z-oz);
+  granny.animT=(granny.animT||0)+moved*2.4;
+  granny.stepT+=moved;
+  const localD3=Math.hypot(player.x-granny.x,player.z-granny.z,player.y-granny.y);
+  if(granny.stepT>0.85){ granny.stepT=0; const v=Math.max(0,1-localD3/14);
+    if(v>0.02&&granny.state!=='ambush'&&!n.stun) sfxStep(v*0.5,70+Math.random()*15); }
+  const moving=moved>dt*0.4, ph=granny.animT||0, swing=moving?Math.sin(ph)*0.55:0;
+  ud.armL.rotation.x=-0.5+swing; ud.armR.rotation.x=-0.5-swing;
+  ud.body.rotation.z=moving?Math.sin(ph)*0.06:0;
+  granny.obj.position.set(granny.x,granny.y+(moving?Math.abs(Math.sin(ph))*0.05:0),granny.z);
+  granny.obj.rotation.y=granny.yaw; }
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,floorHeight,fireDart,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();}};
+window.__dbg={player,granny,floorHeight,fireDart,MP,startRun,SX,SZ,FRONT,CAR_POS,get inv(){return inventory;},get items(){return itemMeshes;},get applied(){return appliedToDoor;},get phase(){return gamePhase;},get doorOpen(){return doorOpen;},get dart(){return {has:hasDart,mesh:dartMesh};},get traps(){return traps;},get vases(){return vases;},get day(){return day;},interact:tryInteract,giveDart:()=>{hasDart=true;updateItemsHUD();},giveAll:()=>{ITEMS.forEach(i=>inventory[i.id]=true);updateItemsHUD();}};
 const clock=new THREE.Clock();
 let flickerT=0;
 function loop(){ requestAnimationFrame(loop);
@@ -971,7 +1251,7 @@ function loop(){ requestAnimationFrame(loop);
         const s=Math.sin(player.yaw),c=Math.cos(player.yaw);
         let nx=player.x+(mx*c + mz*s)*sp*dt, nz=player.z+(-mx*s + mz*c)*sp*dt;
         [nx,nz]=collide(nx,nz,PLAYER_R,player.y);
-        nx=Math.max(-10.2,Math.min(10.2,nx)); nz=Math.max(-8.2,Math.min(8.6,nz));
+        nx=Math.max(-10*SX-0.2,Math.min(10*SX+0.2,nx)); nz=Math.max(-8*SZ-0.2,Math.min(8*SZ+0.6,nz));
         player.x=nx; player.z=nz;
         player.y=floorHeight(player.x,player.z,player.y);
         player.bobT+=dt*sp*1.8; player.stepT+=dt*sp;
@@ -979,7 +1259,7 @@ function loop(){ requestAnimationFrame(loop);
         if(player.stepT>stepLen){ player.stepT=0; sfxStep(player.crouch?0.02:(player.run?0.09:0.045),120+Math.random()*30); }
         makeNoise(player.crouch?1.2:(player.run?10:4)); }
       // win check: walk through open door (ground floor only)
-      if(doorOpen && player.y<1 && player.z>8.0 && Math.abs(player.x+4)<1.4){ endGame(true,'door'); }
+      if(doorOpen && player.y<1 && player.z>8*SZ && Math.abs(player.x-FRONT.x)<1.9){ tryEscapeDoor(); }
     }
     /* ---- hazards ---- */
     if(!hidden){
@@ -989,14 +1269,14 @@ function loop(){ requestAnimationFrame(loop);
         if(onFl && c.cool<=0 && Math.abs(player.x-c.x)<c.w/2 && Math.abs(player.z-c.z)<c.d/2 && player.noise>0.5){
           c.cool=4; sfxCreak(); makeNoise(player.crouch?6:9); say('creeeak...',1.2); } }
       // knockable vases
-      for(const v of vases){ if(v.fallen)continue;
+      for(let i=0;i<vases.length;i++){ const v=vases[i]; if(v.fallen)continue;
         if(Math.abs(player.y-v.floorY)<1.2 && Math.hypot(player.x-v.x,player.z-v.z)<0.75 && player.noise>0.5){
-          v.fallen=true; v.vy=0.001; } }
+          v.fallen=true; v.vy=0.001; mpHazard('vase',i); } }
       // bear traps
-      for(const tr of traps){ if(tr.sprung)continue;
+      for(let i=0;i<traps.length;i++){ const tr=traps[i]; if(tr.sprung)continue;
         if(Math.abs(player.y-tr.y)<1.2 && Math.hypot(player.x-tr.x,player.z-tr.z)<0.42){
           tr.sprung=true; tr.obj.userData.jaws.forEach(j=>{j.rotation.x=Math.PI/2*0.15;j.position.y=0.16;});
-          player.rootT=2.6; sfxSnap(); makeNoise(15);
+          player.rootT=2.6; sfxSnap(); makeNoise(15); mpHazard('trap',i);
           say('A BEAR TRAP! You\'re stuck!',2.5); $('redflash').style.opacity='0.45';
           setTimeout(()=>{if(gamePhase==='play')$('redflash').style.opacity='0';},450); } }
     }
@@ -1005,7 +1285,8 @@ function loop(){ requestAnimationFrame(loop);
       v.vy+=dt*9; v.obj.position.y-=v.vy*dt; v.obj.rotation.x+=dt*3;
       if(v.obj.position.y<=v.floorY+0.05){ v.obj.position.y=v.floorY+0.05; v.obj.rotation.x=Math.PI/2; v.vy=0;
         sfxCrash(); makeNoise(12); say('The vase shatters!',2); } } }
-    updateGranny(dt);
+    if(!MP.active||MP.isHost) updateGranny(dt); else grannyNetUpdate(dt);
+    netTick(dt); updateAvatars(dt);
     // camera
     const baseEye = hidden&&hideSpot&&hideSpot.kind==='bed' ? 0.35 : (player.crouch?CROUCH_EYE:EYE);
     const eyeY=player.y+baseEye+(hidden?0:Math.sin(player.bobT)*0.035);
@@ -1018,14 +1299,16 @@ function loop(){ requestAnimationFrame(loop);
     const gd=Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y);
     heartBeat(Math.max(0,1-gd/9));
     if(granny.state==='patrol'&&gd<7&&$('status').textContent!=='') $('status').textContent='';
-    if(granny.state==='chase') $('status').textContent='RUN!!';
+    if(granny.state==='chase') $('status').textContent=(!MP.active||granny.tid===MP.myId||!granny.tid)?'RUN!!':(nameOf(granny.tid)+' is being chased!');
     else if(granny.state==='investigate') $('status').textContent='she is coming to look...';
     else if(granny.state==='ambush') $('status').textContent='...it is very quiet.';
     else if(granny.stunT>0) $('status').textContent='she is out cold';
     if(msgT>0){ msgT-=dt; if(msgT<=0)$('msg').textContent=''; }
     updatePrompt();
-    // red edge when granny very close
-    $('redflash').style.opacity=(granny.state==='chase'&&gd<4)?String(0.25*(1-gd/4)):'0';
+    // red edge when granny very close (and after you)
+    const chasingMe=granny.state==='chase'&&(!MP.active||granny.tid===MP.myId||!granny.tid);
+    if($('jumpscare').style.display!=='flex')
+      $('redflash').style.opacity=(chasingMe&&gd<4)?String(0.25*(1-gd/4)):'0';
   }
   renderer.render(scene,camera);
 }
