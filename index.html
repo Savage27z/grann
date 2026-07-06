@@ -65,7 +65,7 @@
   #prompt{position:absolute;bottom:52px;width:100%;text-align:center;color:#ff9;font-size:16px;letter-spacing:1px;text-shadow:2px 2px 2px #000}
   #status{position:absolute;top:52px;left:18px;color:#f55;font-size:14px;letter-spacing:2px;text-shadow:1px 1px 0 #000}
   #crosshair{position:absolute;top:50%;left:50%;width:4px;height:4px;margin:-2px;background:#fff8;border-radius:50%}
-  #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.85) 100%)}
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;background:radial-gradient(ellipse at center,transparent 32%,rgba(0,0,0,.94) 100%)}
   #redflash{position:fixed;inset:0;pointer-events:none;z-index:15;background:#f00;opacity:0;transition:opacity .3s}
   #jumpscare{display:none;background:#000;z-index:40}
   #jumpscare canvas{width:min(90vmin,700px);height:min(90vmin,700px);animation:shake .06s infinite}
@@ -413,7 +413,8 @@ function collide(px,pz,r,y){ // circle vs boxes of the entity's storey, returns 
   return [px,pz]; }
 
 /* ============================== THREE SETUP ============================== */
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.075);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.092);
+const FOG_DARK=0.092, FOG_LIT=0.042;
 const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,60);
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -437,6 +438,10 @@ const matFloor=new THREE.MeshStandardMaterial({map:floorTex,roughness:0.9});
 const matCeil=new THREE.MeshStandardMaterial({map:ceilTex,roughness:1});
 const matWood=new THREE.MeshStandardMaterial({color:0x4a3520,roughness:0.85});
 const matDark=new THREE.MeshStandardMaterial({color:0x2a1d12,roughness:0.9});
+const matFabric=new THREE.MeshStandardMaterial({color:0x342820,roughness:1});
+const matRust=new THREE.MeshStandardMaterial({color:0x4a3530,roughness:0.92,metalness:0.15});
+const matPale=new THREE.MeshStandardMaterial({color:0x5a5048,roughness:1});
+const matStain=new THREE.MeshBasicMaterial({color:0x160606,transparent:true,opacity:0.38,depthWrite:false});
 
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
 // upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
@@ -477,13 +482,19 @@ frontDoor.position.set(FRONT.x,0,FRONT.z); scene.add(frontDoor);
 walls0.push({x:FRONT.x,z:FRONT.z,w:2.8,d:0.34}); // door blocks until opened
 const doorWallRef=walls0[walls0.length-1];
 
-// lighting: dim moonlight + flickering bulbs on both storeys
-scene.add(new THREE.AmbientLight(0x334,0.35));
+// lighting: suffocating dark + sickly bulbs that die mid-flicker
+scene.add(new THREE.AmbientLight(0x281820,0.16));
+scene.add(new THREE.HemisphereLight(0x180808,0x020204,0.09));
 const bulbs=[];
-for(const [rx,rz,ry] of Object.values(ROOMS)){
-  const L=new THREE.PointLight(0xffcc88,6,13,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
-  const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:0x664422})); bm.position.copy(L.position); scene.add(bm); }
-const flashlight=new THREE.SpotLight(0xfff4d6,0,18,0.55,0.6,1.1); flashlight.castShadow=true;
+const DIM_ROOMS=new Set(['attic','storage','sewing']);
+for(const [nm,[rx,rz,ry]] of Object.entries(ROOMS)){
+  const dim=DIM_ROOMS.has(nm);
+  const col=nm==='kitchen'?0xffaa55:(nm==='bedroom'?0xffcc99:0xffcc88);
+  const L=new THREE.PointLight(col,dim?3.2:5.2,dim?8.5:10.5,2.2);
+  L.position.set(rx,ry+WALL_H-0.38,rz); scene.add(L); bulbs.push({light:L,dim,room:nm});
+  const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:dim?0x332211:0x664422}));
+  bm.position.copy(L.position); scene.add(bm); }
+const flashlight=new THREE.SpotLight(0xfff0cc,0,16,0.52,0.65,1.15); flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);
 camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.12,-0.12,0); flashlight.target.position.set(0,0,-5);
 scene.add(camera);
@@ -531,6 +542,135 @@ box(-9,0,2,1.3,0.8,0.8,matWood,true,1);                 // dresser
 box(8,0,6.5,1.5,1.1,1.5,matDark,true,1);                // crates
 box(0,0,7,1.2,0.9,1.2,matDark,true,1);                  // chest
 box(4.5,0,6.8,1.8,0.8,0.9,matWood,true,1);              // old desk
+
+/* ------ decor helpers + room clutter (visual only unless noted) ------ */
+function decor(g,x,y,z,ry=0,fl=0,solid=false,cw=0,cd=0){
+  g.position.set(x*SX,fl*WALL_H+y,z*SZ); g.rotation.y=ry;
+  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  scene.add(g);
+  if(solid)(fl?colliders1:colliders0).push({x:x*SX,z:z*SZ,w:(cw||0.55)*SX,d:(cd||0.55)*SZ}); }
+function rug(x,z,w,d,col,fl=0){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w*SX,d*SZ),new THREE.MeshStandardMaterial({color:col,roughness:1}));
+  m.rotation.x=-Math.PI/2; m.position.set(x*SX,fl*WALL_H+0.014,z*SZ); m.receiveShadow=true; scene.add(m); }
+function wallDecal(x,y,z,ry,w,h,fl=0,op=0.38){
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),matStain.clone());
+  p.material.opacity=op; p.position.set(x*SX,fl*WALL_H+y,z*SZ); p.rotation.y=ry; scene.add(p); }
+function cobweb(x,y,z,ry,fl=0,s=1){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const ctx=c.getContext('2d'); ctx.strokeStyle='rgba(210,205,195,0.28)'; ctx.lineWidth=0.6;
+  for(let i=0;i<7;i++){ ctx.beginPath(); ctx.moveTo(4,4); ctx.lineTo(120,8+i*14); ctx.stroke(); }
+  for(let r=18;r<110;r+=16){ ctx.beginPath(); ctx.arc(4,4,r,0,Math.PI*0.55); ctx.stroke(); }
+  const t=new THREE.CanvasTexture(c);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(s,s),new THREE.MeshBasicMaterial({map:t,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide}));
+  m.position.set(x*SX,fl*WALL_H+y,z*SZ); m.rotation.y=ry; scene.add(m); }
+function crookedFrame(x,y,z,ry,fl=0){
+  const g=new THREE.Group();
+  const fr=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.68,0.05),matWood); fr.position.y=0.34; g.add(fr);
+  const canv=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.56),new THREE.MeshBasicMaterial({color:0x14100c}));
+  canv.position.set(0,0.34,0.03); g.add(canv);
+  const face=new THREE.Mesh(new THREE.PlaneGeometry(0.14,0.18),new THREE.MeshBasicMaterial({color:0x060504}));
+  face.position.set(0.04,0.38,0.04); g.add(face);
+  g.rotation.z=0.07; decor(g,x,0,z,ry,fl); }
+function rockingChair(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.07,0.48),matWood); seat.position.y=0.4; g.add(seat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.05),matWood); back.position.set(0,0.68,-0.2); back.rotation.x=-0.1; g.add(back);
+  for(const sx of [-0.17,0.17]){ const r=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.05,0.5),matDark);
+    r.position.set(sx,0.16,0.02); r.rotation.x=0.18; g.add(r); }
+  const coat=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.55,0.12),matFabric); coat.position.set(0.04,0.72,-0.08); coat.rotation.x=-0.15; g.add(coat);
+  decor(g,x,0,z,ry,fl,true,0.55,0.55); }
+function oldTV(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const cab=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.62,0.52),matWood); cab.position.y=0.31; g.add(cab);
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.38),new THREE.MeshBasicMaterial({color:0x1a2a1a}));
+  scr.position.set(0,0.42,0.27); g.add(scr);
+  const hum=new THREE.PointLight(0x224422,0.35,2.2,2); hum.position.set(0,0.42,0.35); g.add(hum);
+  decor(g,x,0,z,ry,fl); }
+function floorLamp(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.03,1.55,6),matRust); pole.position.y=0.78; g.add(pole);
+  const shade=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,0.22,8,1,true),matFabric); shade.position.y=1.52; g.add(shade);
+  const bulb=new THREE.PointLight(0xffaa66,0.9,3.5,2); bulb.position.y=1.45; g.add(bulb);
+  decor(g,x,0,z,ry,fl); }
+function wheelchair(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.05,0.48),matFabric); seat.position.y=0.5; g.add(seat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.42,0.04),matFabric); back.position.set(0,0.78,-0.18); g.add(back);
+  for(const [px,pz] of [[-0.2,0.2],[-0.2,-0.2],[0.2,0.2],[0.2,-0.2]]){
+    const wh=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,0.035,10),matRust);
+    wh.rotation.x=Math.PI/2; wh.position.set(px,0.13,pz); g.add(wh); }
+  const rail=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018,0.32,6),matRust); rail.position.set(-0.26,0.72,0); g.add(rail);
+  decor(g,x,0,z,ry+0.22,fl,true,0.6,0.55); }
+function mannequin(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.21,0.85,8),matPale); torso.position.y=1.08; g.add(torso);
+  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.09,0.12,8),matPale); neck.position.y=1.58; g.add(neck);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.13,8,8),matPale); head.position.y=1.72; head.scale.y=1.15; g.add(head);
+  decor(g,x,0,z,ry,fl,true,0.45,0.45); }
+function slumpedDoll(x,z,ry,fl=0){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,0.28,8),matFabric); body.position.set(0.05,0.16,0); body.rotation.z=1.2; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,8),matPale); head.position.set(0.18,0.08,0.04); g.add(head);
+  decor(g,x,0,z,ry,fl); }
+
+// --- GROUND FLOOR ---
+rug(-7.2,-5.2,2.4,1.8,0x231810);                         // bedroom rug, worn
+box(-7.15,0,-6.7,0.42,0.52,0.38,matWood,false);          // nightstand
+box(-7.05,0.52,-6.65,0.12,0.08,0.08,matDark,false);       // pill bottle on nightstand
+rockingChair(-5.8,-1.4,Math.PI*0.15);                    // coat draped over rocker
+wallDecal(-9.75,0.35,-5.8,Math.PI/2,0.55,1.1);           // stain on bedroom wall
+crookedFrame(-9.7,1.55,-4.2,Math.PI/2);                  // crooked portrait
+box(0.85,0,-2.15,0.42,0.82,0.42,matWood,false);          // kitchen chair
+box(0.85,0.82,-2.28,0.38,0.08,0.06,matWood,false);      // chair back
+box(-0.4,0.95,-7.15,0.22,0.18,0.22,matRust,false);       // pot on counter
+box(-1.8,0.95,-7.05,0.14,0.28,0.14,matPale,false);       // bottle
+box(-1.5,0.95,-6.85,0.12,0.22,0.12,matPale,false);       // second bottle, knocked
+wallDecal(1.5,0.4,-7.82,0,0.7,0.5);                      // rust stain above back door
+rug(-3.8,4.2,2.8,2.2,0x2a1c14);                          // living room rug
+oldTV(-7.2,5.2,Math.PI/2);                               // dead TV glow
+floorLamp(-2.2,5.8,-Math.PI/4);                          // weak lamp by sofa
+box(-5.5,0,4.8,0.95,0.48,0.85,matDark,false);            // armchair facing sofa
+box(-5.5,0.48,5.15,0.95,0.52,0.08,matDark,false);        // armchair back
+box(-7.8,0.05,4.5,0.55,0.08,0.4,matPale,false);          // newspaper stack
+box(-7.6,0.13,4.5,0.5,0.06,0.35,matPale,false);
+{ const g=new THREE.Group(); // tilted cross above cabinet
+  const v=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.38,0.06),matWood); v.position.y=0.19; g.add(v);
+  const h=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.04,0.06),matWood); h.position.set(0,0.28,0); g.add(h);
+  g.rotation.z=0.11; decor(g,-8.8,1.65,5.4,Math.PI/2); }
+box(7.2,0.82,6.85,0.35,0.06,0.28,matPale,false);         // papers on study desk
+box(7.5,0.85,6.7,0.28,0.04,0.22,matPale,false);
+box(8.5,0.05,2.8,0.32,0.22,0.26,matPale,false);          // fallen book
+box(8.3,0.05,3.1,0.28,0.18,0.24,matPale,false);
+box(6.8,0,1.5,0.55,0.72,0.55,matDark,false);             // study leather chair
+box(5.8,0,-5.8,0.55,0.55,0.55,matDark,false);            // storage crate stack
+box(5.55,0.55,-5.75,0.45,0.35,0.45,matWood,false);
+{ const g=new THREE.Group(); // rope coil
+  const rope=new THREE.Mesh(new THREE.TorusGeometry(0.18,0.035,6,14),matFabric); rope.rotation.x=Math.PI/2; rope.position.y=0.06; g.add(rope);
+  decor(g,6.2,-1.8,Math.PI/3); }
+box(-3.5,0,7.5,0.9,0.04,0.55,matDark,false);             // doormat by front hall
+{ const g=new THREE.Group(); // umbrella stand
+  const tub=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.18,0.55,10),matRust); tub.position.y=0.28; g.add(tub);
+  const um=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.75,6),matDark); um.position.set(0.04,0.72,0); um.rotation.z=0.12; g.add(um);
+  decor(g,-6.2,7.2,Math.PI); }
+cobweb(-9.3,2.85,-7.5,Math.PI/4);                        // kitchen corner
+cobweb(9.5,2.85,7.2,-Math.PI/3);                         // study corner
+
+// --- UPSTAIRS ---
+mannequin(-2.2,-5.8,Math.PI*0.08,1);                     // sewing room — headless dress form vibe
+box(-3.8,0.8,-6.2,0.08,0.12,0.08,matRust,false,1);       // scissors on table
+box(-4.3,0.82,-6.5,0.14,0.1,0.14,matFabric,false,1);     // thread spool
+wheelchair(7.2,5.5,-Math.PI/3,1);                        // attic wheelchair
+slumpedDoll(1.2,6.2,0.6,1);                              // doll in attic corner
+box(-8.8,0,4.8,0.7,0.38,0.45,matDark,false,1);           // guest luggage
+box(-8.5,0.38,4.75,0.65,0.06,0.4,matFabric,false,1);   // lid half open
+{ const g=new THREE.Group(); // hanging chain in attic
+  const ch=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.9,6),matRust); ch.position.y=2.55; g.add(ch);
+  const hook=new THREE.Mesh(new THREE.TorusGeometry(0.05,0.012,4,8,Math.PI),matRust); hook.position.y=2.12; hook.rotation.x=Math.PI/2; g.add(hook);
+  decor(g,6.8,0,6.2,0,1); }
+cobweb(-9.2,5.5,-6.8,Math.PI/3,1,0.9);                   // sewing room ceiling
+cobweb(8.8,5.5,6.5,-Math.PI/4,1,1.1);                     // attic ceiling
+cobweb(3.5,5.5,-6.5,0,1,0.8);                            // landing
+wallDecal(-9.75,0.4,6.2,Math.PI/2,0.45,0.9,1);            // guest room stain
 
 /* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
 const hideSpots=[];
@@ -1009,7 +1149,7 @@ function hostFireDart(who,px,pz,py,yaw){ if(!hasDart)return;
 /* ============================== INPUT ============================== */
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
 let flashOn=false;
-function toggleFlash(){ flashOn=!flashOn; flashlight.intensity=flashOn?18:0; sfxStep(0.08,900);
+function toggleFlash(){ flashOn=!flashOn; flashlight.intensity=flashOn?18:0; scene.fog.density=flashOn?FOG_LIT:FOG_DARK; sfxStep(0.08,900);
   if(IS_TOUCH)$('btnLight').classList.toggle('on',flashOn); }
 
 /* ---- touch controls ---- */
@@ -1394,9 +1534,9 @@ window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAva
     if(look){ const dx=look[0]-x, dy=look[1]-y, dz=look[2]-z;
       player.yaw=Math.atan2(dx,dz); player.pitch=Math.atan2(dy,Math.hypot(dx,dz)); }
     else{ player.yaw=yaw; player.pitch=pitch??0; }
-    flashOn=true; flashlight.intensity=28; scene.fog.density=0.028;
+    flashOn=true; flashlight.intensity=28; scene.fog.density=FOG_LIT;
     $('msg').textContent=''; $('prompt').textContent=''; $('status').textContent='';
-    bulbs.forEach(b=>{ b.intensity=8; });
+    bulbs.forEach(b=>{ b.light.intensity=8; });
     const eyeY=player.y+(player.crouch?CROUCH_EYE:EYE);
     camera.position.set(player.x,eyeY,player.z);
     camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
@@ -1408,9 +1548,12 @@ function loop(){ requestAnimationFrame(loop);
   const dt=Math.min(0.05,clock.getDelta());
   const t=clock.elapsedTime;
 
-  // flickering bulbs
+  // flickering bulbs — some rooms barely hold a filament
   flickerT-=dt; if(flickerT<=0){ flickerT=0.05+Math.random()*0.15;
-    bulbs.forEach(b=>{ b.intensity=3.5+Math.random()*3; if(Math.random()<0.01)b.intensity=0.2; }); }
+    bulbs.forEach(b=>{ const L=b.light;
+      if(b.dim && Math.random()<0.04){ L.intensity=0.08; return; }
+      L.intensity=2.4+Math.random()*2.6;
+      if(Math.random()<0.015) L.intensity=0.12; }); }
 
   if(gamePhase==='play'){
     runT+=dt;
