@@ -30,6 +30,21 @@
   #startmp{display:none;margin-top:22px;padding:14px 48px;background:#0d2a12;border:2px solid #2a7a3a;color:#8f8;font-family:inherit;font-size:18px;letter-spacing:4px;cursor:pointer}
   #startmp:hover{background:#1a4a22;color:#fff}
   #mpstatus{position:absolute;bottom:8px;right:12px;color:#569;font-size:11px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
+  #profile{display:none;background:radial-gradient(ellipse at center,#120808 0%,#000 88%);z-index:24}
+  #profile h2{color:#966;font-size:22px;letter-spacing:5px;font-weight:normal;margin:0 0 6px 0}
+  #profile .proflbl{color:#776;font-size:11px;letter-spacing:3px;margin:16px 0 8px 0}
+  #profname{width:min(300px,82vw);padding:14px 16px;background:#0a0808;border:2px solid #4a2828;color:#eec;font-family:inherit;font-size:22px;letter-spacing:2px;text-align:center;outline:none}
+  #profname:focus{border-color:#a44;box-shadow:0 0 16px rgba(200,60,60,.25)}
+  .genderrow{display:flex;gap:14px;justify-content:center;margin:4px 0 8px 0}
+  .genderbtn{padding:14px 32px;background:#140a0a;border:2px solid #4a3030;color:#aa9;font-family:inherit;font-size:16px;letter-spacing:2px;cursor:pointer;transition:all .15s;min-width:120px}
+  .genderbtn.on{background:#3a1515;border-color:#c55;color:#fff;box-shadow:0 0 18px rgba(200,60,60,.3)}
+  .genderbtn:hover{border-color:#844;color:#fff}
+  #profcontinue{margin-top:10px;padding:16px 56px;background:#1a0808;border:2px solid #5a2020;color:#daa;font-family:inherit;font-size:18px;letter-spacing:4px;cursor:pointer;transition:all .2s}
+  #profcontinue:hover{background:#4a0d0d;border-color:#f44;color:#fff}
+  #proferr{color:#f55;font-size:13px;letter-spacing:1px;min-height:20px;margin-top:6px}
+  #profile .profhint{color:#554;font-size:11px;letter-spacing:2px;margin-top:22px;max-width:340px;line-height:1.6}
+  #lobbylist .dot{margin-right:6px}
+  @media (pointer:coarse){ .genderbtn{padding:12px 22px;font-size:14px;min-width:100px} #profname{font-size:18px} }
   @keyframes flick{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.4}94%{opacity:1}97%{opacity:.6}98%{opacity:1}}
   #menu h2{color:#777;font-size:15px;font-weight:normal;margin:0 0 28px 0;letter-spacing:3px}
   .diffbtn{display:block;width:340px;margin:7px auto;padding:12px;background:#140a0a;border:1px solid #4a2020;color:#c9a;font-family:inherit;font-size:17px;letter-spacing:2px;cursor:pointer;transition:all .15s}
@@ -128,6 +143,20 @@
     <button id="joingo">JOIN</button>
   </div>
   <div class="hint">HEADPHONES RECOMMENDED &middot; SHE HEARS EVERYTHING</div>
+</div>
+
+<div id="profile" class="overlay">
+  <h2>WHO ARE YOU?</h2>
+  <div class="proflbl">YOUR NAME</div>
+  <input id="profname" maxlength="14" placeholder="Enter your name..." autocomplete="off" spellcheck="false">
+  <div class="proflbl">CHARACTER</div>
+  <div class="genderrow">
+    <button class="genderbtn on" id="gmale" type="button">♂ MALE</button>
+    <button class="genderbtn" id="gfemale" type="button">♀ FEMALE</button>
+  </div>
+  <div id="proferr"></div>
+  <button id="profcontinue" type="button">CONTINUE</button>
+  <div class="profhint">Teammates see your name and character in co-op. Solo players see their name in the HUD.</div>
 </div>
 
 <div id="lobby" class="overlay">
@@ -611,19 +640,30 @@ let itemMeshes=[], hintSprites=[];
 let hidden=false, hideSpot=null, hiddenSafe=false;
 let hasDart=false, dartMesh=null, runT=0;
 const SETTINGS={vol:+(localStorage.getItem('gh_vol')??0.8), sens:+(localStorage.getItem('gh_sens')??1)};
+const PROFILE={name:localStorage.getItem('gh_name')||'', gender:localStorage.getItem('gh_gender')||'male'};
+let pendingMode='solo', pendingJoinCode='';
 const player={x:-8*SX,z:-5*SZ,y:0,yaw:Math.PI,pitch:0,crouch:false,run:false,vy:0,noise:0,bobT:0,stepT:0};
 const granny={obj:buildGranny(),x:4*SX,z:4*SZ,y:WALL_H,yaw:0,state:'patrol',path:[],pathI:0,target:null,waitT:1.5,lastSeen:null,memT:0,stepT:0,stunT:0,tid:''};
 scene.add(granny.obj);
 const keys={};
 
+const AV_COLORS=[0x3d7dd8,0xd8842f,0x3bab6b,0xb14fc0];
+const AV_HAIR_M=[0x2a2018,0x0e0c0a,0x4a3018,0x1c1408];
+const AV_HAIR_F=[0x1a1208,0x3a2818,0x0a0806,0x2a1808];
+
 /* ---- multiplayer state (PeerJS co-op, host-authoritative granny) ---- */
 const MP={active:false,isHost:false,pendingHost:false,started:false,peer:null,host:null,conns:[],
-  remote:{},   // host only: latest input state per guest id
-  net:{},      // render targets for other players' avatars (all clients)
-  avatars:{},  // id -> THREE.Group
-  gnet:null,   // guest only: latest granny snapshot
+  remote:{}, net:{}, avatars:{}, profiles:{}, gnet:null,
   myId:'P1', code:'', diffIdx:2, escSent:false, sendT:0};
-function nameOf(id){ return id===MP.myId?'YOU':('PLAYER '+String(id).replace('P','')); }
+function sanitizeName(s){ s=(s||'').trim().replace(/\s+/g,' ').slice(0,14).replace(/[^a-zA-Z0-9 _-]/g,''); return s; }
+function slotColor(id){ return AV_COLORS[(parseInt(String(id).replace('P',''),10)-1)%4]||AV_COLORS[0]; }
+function myProfile(){ return {name:sanitizeName(PROFILE.name)||'Survivor',gender:PROFILE.gender==='female'?'female':'male',color:slotColor(MP.myId||'P1')}; }
+function nameOf(id){ if(id===MP.myId)return 'YOU'; return MP.profiles[id]?.name||('Survivor '+String(id).replace('P','')); }
+function dropAvatar(id){ if(MP.avatars[id]){ scene.remove(MP.avatars[id]); delete MP.avatars[id]; } }
+function setPlayerProfile(id,prof){ const old=MP.profiles[id]; MP.profiles[id]=prof;
+  if(!old||old.name!==prof.name||old.gender!==prof.gender) dropAvatar(id); }
+function updateMpStatus(){ const nm=sanitizeName(PROFILE.name)||'Survivor';
+  $('mpstatus').textContent=MP.active?('CO-OP · ROOM '+MP.code+' · '+nm):nm; }
 
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
@@ -1039,17 +1079,39 @@ $('setVol').addEventListener('input',e=>{ SETTINGS.vol=+e.target.value; localSto
   if(masterGain)masterGain.gain.value=SETTINGS.vol; });
 $('setSens').addEventListener('input',e=>{ SETTINGS.sens=+e.target.value; localStorage.setItem('gh_sens',SETTINGS.sens); });
 
+function showProfile(mode,joinCode){ pendingMode=mode; pendingJoinCode=joinCode||'';
+  $('landing').style.display='none'; $('menu').style.display='none'; $('lobby').style.display='none';
+  $('profile').style.display='flex'; $('proferr').textContent='';
+  $('profname').value=PROFILE.name||'';
+  $('gmale').classList.toggle('on',PROFILE.gender!=='female');
+  $('gfemale').classList.toggle('on',PROFILE.gender==='female');
+  setTimeout(()=>$('profname').focus(),120); }
+function saveProfileFromUI(){ PROFILE.name=sanitizeName($('profname').value);
+  if(!PROFILE.name)PROFILE.name='Survivor';
+  PROFILE.gender=$('gfemale').classList.contains('on')?'female':'male';
+  localStorage.setItem('gh_name',PROFILE.name); localStorage.setItem('gh_gender',PROFILE.gender); }
+function proceedFromProfile(){ saveProfileFromUI();
+  if(PROFILE.name.length<2){ $('proferr').textContent='Name needs at least 2 characters.'; return; }
+  $('profile').style.display='none';
+  if(pendingMode==='solo'){ MP.pendingHost=false; $('menu').style.display='flex';
+    $('menu').querySelector('h2').textContent='SHE HEARS EVERYTHING. YOU HAVE FIVE DAYS.'; }
+  else if(pendingMode==='host'){ MP.pendingHost=true; $('menu').style.display='flex';
+    $('menu').querySelector('h2').textContent='HOST: PICK THE DIFFICULTY FOR YOUR ROOM'; }
+  else if(pendingMode==='join') joinRoom(pendingJoinCode); }
+
 $('enterbtn').addEventListener('click',()=>{
-  audioInit(); AC.resume&&AC.resume(); startAmbient(); MP.pendingHost=false;
-  $('landing').style.display='none'; $('menu').style.display='flex'; });
+  audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('solo'); });
 $('hostbtn').addEventListener('click',()=>{
-  audioInit(); AC.resume&&AC.resume(); startAmbient(); MP.pendingHost=true;
-  $('landing').style.display='none'; $('menu').style.display='flex';
-  $('menu').querySelector('h2').textContent='HOST: PICK THE DIFFICULTY FOR YOUR ROOM'; });
+  audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('host'); });
 $('joinbtn').addEventListener('click',()=>{ $('joinrow').style.display='block'; $('joincode').focus(); });
 $('joingo').addEventListener('click',()=>{ const code=$('joincode').value.trim().toUpperCase();
-  if(code.length!==4)return; audioInit(); AC.resume&&AC.resume(); startAmbient(); joinRoom(code); });
+  if(code.length!==4){ $('joinrow').style.display='block'; return; }
+  audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('join',code); });
 $('joincode').addEventListener('keydown',e=>{ if(e.key==='Enter')$('joingo').click(); e.stopPropagation(); });
+$('gmale').addEventListener('click',()=>{ $('gmale').classList.add('on'); $('gfemale').classList.remove('on'); PROFILE.gender='male'; });
+$('gfemale').addEventListener('click',()=>{ $('gfemale').classList.add('on'); $('gmale').classList.remove('on'); PROFILE.gender='female'; });
+$('profcontinue').addEventListener('click',proceedFromProfile);
+$('profname').addEventListener('keydown',e=>{ if(e.key==='Enter')proceedFromProfile(); });
 
 document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient();
@@ -1059,7 +1121,7 @@ document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>
 
 function startRun(dIdx,itemPlan,dayPlan,sync){
   DIFF=DIFFS[dIdx]; MP.diffIdx=dIdx; MP.escSent=false; MP.started=MP.active;
-  $('menu').style.display='none'; $('lobby').style.display='none'; $('landing').style.display='none';
+  $('menu').style.display='none'; $('lobby').style.display='none'; $('landing').style.display='none'; $('profile').style.display='none';
   $('hud').style.display='block';
   if(IS_TOUCH)$('touchui').style.display='block';
   day=1; runT=0; inventory={}; appliedToDoor={}; doorOpen=false; hasDart=false;
@@ -1068,6 +1130,7 @@ function startRun(dIdx,itemPlan,dayPlan,sync){
   if(walls0.indexOf(doorWallRef)<0) walls0.push(doorWallRef);
   doorPanel.rotation.y=0; doorPanel.position.set(0,1.3,0);
   if(sync){ // joined a run already in progress: adopt team state before spawning
+    if(sync.profiles) for(const id in sync.profiles) setPlayerProfile(id,sync.profiles[id]);
     inventory=Object.assign({},sync.inv); appliedToDoor=Object.assign({},sync.app);
     hasDart=!!sync.hasDart; day=sync.day||1;
     (sync.taken||[]).forEach(id=>{ if(!inventory[id]&&!appliedToDoor[id]) inventory[id]=true; });
@@ -1081,67 +1144,71 @@ function startRun(dIdx,itemPlan,dayPlan,sync){
   resetMe();
   $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name;
   say('Day '+day+'. Find the items. Get out.',3); updateItemsHUD();
-  $('mpstatus').textContent=MP.active?('CO-OP · ROOM '+MP.code+' · YOU ARE '+MP.myId):'';
+  updateMpStatus();
   gamePhase='play'; playing=true; requestLock(); }
 
 /* ============================== MULTIPLAYER (PeerJS) ============================== */
-const AV_COLORS=[0x3d7dd8,0xd8842f,0x3bab6b,0xb14fc0];
-const AV_HAIR=[0x2a2018,0x0e0c0a,0x4a3018,0x1c1408];
-function buildAvatar(id){ const g=new THREE.Group();
-  const idx=(parseInt(String(id).replace('P',''),10)-1)%4;
-  const col=AV_COLORS[idx]||0x3d7dd8;
+function makeNameTag(name,col){ const c=document.createElement('canvas'); c.width=256; c.height=48;
+  const x=c.getContext('2d'); x.font='bold 28px Courier New'; x.textAlign='center';
+  const label=(name||'Survivor').slice(0,14);
+  x.fillStyle='rgba(0,0,0,.55)'; x.fillRect(0,0,256,48);
+  x.fillStyle='#'+(col||0xffffff).toString(16).padStart(6,'0');
+  x.fillText(label,128,32);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
+  sp.scale.set(1.35,0.26,1); return sp; }
+function buildAvatar(id){ dropAvatar(id);
+  const prof=MP.profiles[id]||{name:id,gender:'male',color:slotColor(id)};
+  const fem=prof.gender==='female', col=prof.color||slotColor(id);
+  const g=new THREE.Group();
   const shirt=new THREE.MeshStandardMaterial({color:col,roughness:0.75});
-  const pants=new THREE.MeshStandardMaterial({color:0x272b33,roughness:0.9});
-  const skin=new THREE.MeshStandardMaterial({color:0xd8b28e,roughness:0.85});
-  const hairM=new THREE.MeshStandardMaterial({color:AV_HAIR[idx],roughness:0.95});
+  const pants=new THREE.MeshStandardMaterial({color:fem?0x2a2530:0x272b33,roughness:0.9});
+  const skin=new THREE.MeshStandardMaterial({color:fem?0xe0b89a:0xd8b28e,roughness:0.85});
+  const hairCol=(fem?AV_HAIR_F:AV_HAIR_M)[(parseInt(String(id).replace('P',''),10)-1)%4];
+  const hairM=new THREE.MeshStandardMaterial({color:hairCol,roughness:0.95});
   const shoeM=new THREE.MeshStandardMaterial({color:0x17130f,roughness:0.9});
-  // legs pivot at the hip so they can swing when walking
-  const mkLeg=side=>{ const L=new THREE.Group(); L.position.set(0.095*side,0.86,0);
-    const th=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.06,0.82,8),pants); th.position.y=-0.41; L.add(th);
+  const shW=fem?0.085:0.095, hipW=fem?0.19:0.165, shR=fem?0.15:0.175, torsoH=fem?0.5:0.55;
+  const mkLeg=side=>{ const L=new THREE.Group(); L.position.set(shW*side,0.86,0);
+    const th=new THREE.Mesh(new THREE.CylinderGeometry(fem?0.07:0.075,fem?0.055:0.06,0.82,8),pants); th.position.y=-0.41; L.add(th);
     const shoe=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.24),shoeM); shoe.position.set(0,-0.83,0.05); L.add(shoe);
     g.add(L); return L; };
   const legL=mkLeg(-1), legR=mkLeg(1);
-  // upper body group (drops down when crouching)
   const up=new THREE.Group(); g.add(up);
-  const hips=new THREE.Mesh(new THREE.CylinderGeometry(0.155,0.165,0.18,10),pants); hips.position.y=0.92; hips.scale.z=0.78; up.add(hips);
-  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.175,0.15,0.55,10),shirt); torso.position.y=1.27; torso.scale.z=0.72; up.add(torso);
-  const shoulders=new THREE.Mesh(new THREE.SphereGeometry(0.17,10,8),shirt); shoulders.position.y=1.53; shoulders.scale.set(1.15,0.5,0.75); up.add(shoulders);
-  // arms pivot at the shoulder
-  const mkArm=side=>{ const A=new THREE.Group(); A.position.set(0.235*side,1.52,0); A.rotation.z=side*0.1;
-    const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.045,0.34,8),shirt); sleeve.position.y=-0.17; A.add(sleeve);
-    const fore=new THREE.Mesh(new THREE.CylinderGeometry(0.042,0.038,0.3,8),skin); fore.position.y=-0.48; A.add(fore);
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8),skin); hand.position.y=-0.65; A.add(hand);
+  const hips=new THREE.Mesh(new THREE.CylinderGeometry(hipW,hipW+0.01,0.18,10),pants); hips.position.y=0.92; hips.scale.z=0.78; up.add(hips);
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(shR,fem?0.13:0.15,torsoH,10),shirt); torso.position.y=1.24; torso.scale.z=0.72; up.add(torso);
+  const shoulders=new THREE.Mesh(new THREE.SphereGeometry(fem?0.14:0.17,10,8),shirt);
+  shoulders.position.y=1.5; shoulders.scale.set(fem?1.05:1.15,0.5,fem?0.7:0.75); up.add(shoulders);
+  const mkArm=side=>{ const A=new THREE.Group(); A.position.set((fem?0.21:0.235)*side,1.49,0); A.rotation.z=side*0.1;
+    const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(fem?0.046:0.052,fem?0.04:0.045,0.34,8),shirt); sleeve.position.y=-0.17; A.add(sleeve);
+    const fore=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.034,0.3,8),skin); fore.position.y=-0.48; A.add(fore);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(0.048,8,8),skin); hand.position.y=-0.64; A.add(hand);
     up.add(A); return A; };
   const armL=mkArm(-1), armR=mkArm(1);
-  // neck + head with hair and eyes
-  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.06,0.09,8),skin); neck.position.y=1.62; up.add(neck);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.155,12,12),skin); head.position.y=1.77; head.scale.y=1.12; up.add(head);
-  const hair=new THREE.Mesh(new THREE.SphereGeometry(0.162,12,12),hairM); hair.position.set(0,1.81,-0.025);
-  hair.scale.set(1,0.92,1); up.add(hair); // cap of hair over the skull
-  const fringe=new THREE.Mesh(new THREE.SphereGeometry(0.158,10,8,0,Math.PI*2,0,Math.PI*0.35),hairM);
-  fringe.position.set(0,1.8,0); up.add(fringe);
+  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.055,0.09,8),skin); neck.position.y=1.58; up.add(neck);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(fem?0.14:0.155,12,12),skin); head.position.y=1.72; head.scale.set(fem?0.95:1,fem?1.08:1.12,1); up.add(head);
+  if(fem){ // long hair + ponytail
+    const cap=new THREE.Mesh(new THREE.SphereGeometry(0.148,12,12),hairM); cap.position.set(0,1.76,-0.02); cap.scale.set(1.05,0.95,1.05); up.add(cap);
+    const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.035,0.42,8),hairM); tail.position.set(0,1.55,-0.18); tail.rotation.x=0.35; up.add(tail);
+    const bangs=new THREE.Mesh(new THREE.SphereGeometry(0.145,10,8,0,Math.PI*2,0,Math.PI*0.4),hairM); bangs.position.set(0,1.75,0.02); up.add(bangs); }
+  else { // short cropped hair
+    const hair=new THREE.Mesh(new THREE.SphereGeometry(0.158,12,12),hairM); hair.position.set(0,1.76,-0.025); hair.scale.set(1,0.9,1); up.add(hair);
+    const fringe=new THREE.Mesh(new THREE.SphereGeometry(0.154,10,8,0,Math.PI*2,0,Math.PI*0.32),hairM); fringe.position.set(0,1.75,0); up.add(fringe); }
   const eyeM=new THREE.MeshStandardMaterial({color:0x1a1a22,roughness:0.4});
-  for(const s of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(0.02,6,6),eyeM);
-    e.position.set(0.055*s,1.79,0.14); up.add(e); }
-  const nose=new THREE.Mesh(new THREE.SphereGeometry(0.024,6,6),skin); nose.position.set(0,1.75,0.155); up.add(nose);
-  // flashlight in the right hand
+  for(const s of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(0.018,6,6),eyeM); e.position.set(0.05*s,1.74,0.13); up.add(e); }
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(0.02,6,6),skin); nose.position.set(0,1.7,0.145); up.add(nose);
   const torch=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.035,0.16,8),new THREE.MeshStandardMaterial({color:0x444a52,metalness:0.6,roughness:0.4}));
-  torch.rotation.x=Math.PI/2; torch.position.set(0,-0.65,0.09); armR.add(torch);
+  torch.rotation.x=Math.PI/2; torch.position.set(0,-0.64,0.09); armR.add(torch);
   const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.03,6,6),new THREE.MeshBasicMaterial({color:0xfff4d6}));
-  lamp.position.set(0,-0.65,0.18); lamp.visible=false; armR.add(lamp);
+  lamp.position.set(0,-0.64,0.18); lamp.visible=false; armR.add(lamp);
   const spot=new THREE.SpotLight(0xfff4d6,0,14,0.5,0.6,1.2); spot.position.set(0.2,1.0,0.2);
   const tgt=new THREE.Object3D(); tgt.position.set(0,0.9,5); g.add(tgt); spot.target=tgt; g.add(spot);
-  // name tag
-  const c=document.createElement('canvas'); c.width=128; c.height=40; const x=c.getContext('2d');
-  x.fillStyle='#'+col.toString(16).padStart(6,'0'); x.font='bold 26px Courier New'; x.textAlign='center'; x.fillText(String(id),64,29);
-  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
-  tag.position.y=2.12; tag.scale.set(1.1,0.34,1); g.add(tag);
+  const tag=makeNameTag(prof.name,col); tag.position.y=fem?2.06:2.1; g.add(tag);
   g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
-  g.userData={legL,legR,armL,armR,up,lamp,spot,tag,animT:0};
-  scene.add(g); return g; }
-function ensureAvatar(id){ if(!MP.avatars[id]) MP.avatars[id]=buildAvatar(id); return MP.avatars[id]; }
-function removeAvatar(id){ if(MP.avatars[id]){ scene.remove(MP.avatars[id]); delete MP.avatars[id]; } delete MP.net[id]; }
-function updateAvatars(dt){ for(const id in MP.net){ const n=MP.net[id], g=ensureAvatar(id), u=g.userData;
+  g.userData={legL,legR,armL,armR,up,lamp,spot,tag,animT:0,fem};
+  scene.add(g); MP.avatars[id]=g; return g; }
+function ensureAvatar(id){ if(!MP.avatars[id]) buildAvatar(id); return MP.avatars[id]; }
+function removeAvatar(id){ dropAvatar(id); delete MP.net[id]; }
+function updateAvatars(dt){ for(const id in MP.net){ if(id===MP.myId)continue;
+  const n=MP.net[id], g=ensureAvatar(id), u=g.userData;
   g.visible=!n.hidden && gamePhase==='play';
   const ox=g.position.x, oz=g.position.z;
   g.position.x+=(n.x-g.position.x)*Math.min(1,dt*12);
@@ -1149,22 +1216,19 @@ function updateAvatars(dt){ for(const id in MP.net){ const n=MP.net[id], g=ensur
   g.position.z+=(n.z-g.position.z)*Math.min(1,dt*12);
   let dY=n.yaw-g.rotation.y; while(dY>Math.PI)dY-=2*Math.PI; while(dY<-Math.PI)dY+=2*Math.PI;
   g.rotation.y+=dY*Math.min(1,dt*12);
-  // walk cycle driven by actual movement
-  const moved=Math.hypot(g.position.x-ox,g.position.z-oz);
-  const moving=moved>dt*0.35;
+  const moved=Math.hypot(g.position.x-ox,g.position.z-oz), moving=moved>dt*0.35;
   u.animT+=moved*3.4;
   const target=moving?Math.sin(u.animT)*0.55:0, k=Math.min(1,dt*10);
   u.legL.rotation.x+=(target-u.legL.rotation.x)*k;
   u.legR.rotation.x+=(-target-u.legR.rotation.x)*k;
   u.armL.rotation.x+=(-target*0.8-u.armL.rotation.x)*k;
-  u.armR.rotation.x+=((n.flash?-0.9:target*0.8)-u.armR.rotation.x)*k; // torch arm raised when the light is on
-  // crouch: knees bend, upper body drops and leans forward
+  u.armR.rotation.x+=((n.flash?-0.9:target*0.8)-u.armR.rotation.x)*k;
   const cr=n.crouch?1:0;
   u.up.position.y+=((cr?-0.38:0)-u.up.position.y)*k;
   u.up.rotation.x+=((cr?0.25:0)-u.up.rotation.x)*k;
   const ls=cr?0.56:1;
   u.legL.scale.y+=(ls-u.legL.scale.y)*k; u.legR.scale.y+=(ls-u.legR.scale.y)*k;
-  u.tag.position.y=n.crouch?1.7:2.12;
+  u.tag.position.y=(u.fem?2.06:2.1)-(cr?0.36:0);
   u.lamp.visible=!!n.flash; u.spot.intensity=n.flash?6:0; } }
 
 function sendAll(o){ for(const c of MP.conns){ try{ if(c.open)c.send(o); }catch(e){} } }
@@ -1174,16 +1238,25 @@ function mpHazard(kind,i){ if(!MP.active)return;
   if(MP.isHost) netEv({k:kind,i}); else netToHost({t:'act',k:kind,i}); }
 
 function makeCode(){ let s=''; for(let i=0;i<4;i++)s+='ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]; return s; }
-function showLobby(code,asHost){ $('menu').style.display='none'; $('landing').style.display='none';
+function showLobby(code,asHost){ $('menu').style.display='none'; $('landing').style.display='none'; $('profile').style.display='none';
   $('lobby').style.display='flex'; $('roomcode').textContent=code;
   $('startmp').style.display=asHost?'block':'none';
   $('lobbystatus').textContent=asHost?'share the code with your friends':'waiting for the host to start...';
-  updateLobbyList(asHost?['P1']:[]); }
-function updateLobbyList(ids){ $('lobbylist').innerHTML=ids.map(id=>
-  '<div>'+id+(id==='P1'?' (HOST)':'')+(id===MP.myId?' — YOU':'')+'</div>').join('')||'<div>connecting...</div>'; }
+  updateLobbyList(); }
+function lobbyIds(){ if(MP.isHost) return ['P1'].concat(MP.conns.map(c=>c.__pid).filter(Boolean));
+  return Object.keys(MP.profiles).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1))); }
+function updateLobbyList(){ const ids=lobbyIds();
+  $('lobbylist').innerHTML=ids.map(id=>{ const p=MP.profiles[id]||{};
+    const host=id==='P1'?' (HOST)':'', you=id===MP.myId?' — YOU':'';
+    const g=p.gender==='female'?' ♀':' ♂';
+    const col=(p.color||slotColor(id)).toString(16).padStart(6,'0');
+    return '<div><span class="dot" style="color:#'+col+'">●</span> '+(p.name||id)+g+host+you+'</div>';
+  }).join('')||'<div>connecting...</div>'; }
+function broadcastProfiles(){ sendAll({t:'profiles',profiles:MP.profiles}); updateLobbyList(); }
 
 function createRoom(dIdx){
   MP.pendingHost=false; MP.active=true; MP.isHost=true; MP.myId='P1'; MP.diffIdx=dIdx; DIFF=DIFFS[dIdx];
+  MP.profiles={P1:myProfile()}; MP.net={}; MP.avatars={}; nextPid=2;
   MP.code=makeCode(); showLobby('····',true); $('lobbystatus').textContent='creating room...';
   const peer=new Peer('grannyhouse-'+MP.code); MP.peer=peer;
   peer.on('open',()=>{ $('roomcode').textContent=MP.code; $('lobbystatus').textContent='share the code with your friends'; });
@@ -1196,20 +1269,18 @@ function createRoom(dIdx){
         setTimeout(()=>c.close(),300); }); return; }
     c.on('open',()=>{ const pid='P'+(nextPid++); c.__pid=pid; MP.conns.push(c);
       MP.remote[pid]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
-      c.send({t:'you',id:pid});
-      // joined (or finished connecting) after the run began: hand them the plan + current state
+      c.send({t:'you',id:pid,profiles:MP.profiles});
       if(MP.started&&MP.startMsg) c.send({...MP.startMsg,
-        sync:{inv:inventory,app:appliedToDoor,doorOpen,hasDart,day,
+        sync:{inv:inventory,app:appliedToDoor,doorOpen,hasDart,day,profiles:MP.profiles,
               taken:ITEMS.filter(i=>!itemMeshes.some(m=>m.userData.item.id===i.id)).map(i=>i.id)}});
       broadcastLobby(); });
     c.on('data',d=>hostData(c,d));
     c.on('close',()=>{ dropGuest(c); });
     c.on('error',()=>{ dropGuest(c); }); }); }
 let nextPid=2;
-function broadcastLobby(){ const ids=['P1'].concat(MP.conns.map(c=>c.__pid));
-  updateLobbyList(ids); sendAll({t:'lobby',ids}); }
+function broadcastLobby(){ updateLobbyList(); sendAll({t:'lobby',ids:lobbyIds()}); }
 function dropGuest(c){ const pid=c.__pid; if(!pid)return;
-  MP.conns=MP.conns.filter(x=>x!==c); delete MP.remote[pid]; removeAvatar(pid);
+  MP.conns=MP.conns.filter(x=>x!==c); delete MP.remote[pid]; removeAvatar(pid); delete MP.profiles[pid];
   if(MP.started){ if(gamePhase==='play') say(nameOf(pid)+' disconnected.',3); }
   else broadcastLobby(); }
 
@@ -1217,12 +1288,12 @@ $('startmp').addEventListener('click',()=>{ if(!MP.isHost)return;
   DIFF=DIFFS[MP.diffIdx];
   hasDart=false; if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
   const items=makeSpawnPlan(), dayp=makeDayPlan(items);
-  MP.started=true; MP.startMsg={t:'start',d:MP.diffIdx,items,dayp};
+  MP.started=true; MP.startMsg={t:'start',d:MP.diffIdx,items,dayp,profiles:MP.profiles};
   sendAll(MP.startMsg);
   startRun(MP.diffIdx,items,dayp); });
 
 function joinRoom(code){
-  MP.active=true; MP.isHost=false; MP.code=code;
+  MP.active=true; MP.isHost=false; MP.code=code; MP.profiles={}; MP.net={}; MP.avatars={};
   showLobby(code,false); $('lobbystatus').textContent='connecting...';
   const peer=new Peer(); MP.peer=peer;
   peer.on('error',err=>{ if(err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
@@ -1238,6 +1309,8 @@ function joinRoom(code){
     c.on('close',bye); c.on('error',bye); }); }
 
 function hostData(c,d){ const id=c.__pid; if(!id)return;
+  if(d.t==='hello'){ setPlayerProfile(id,{name:sanitizeName(d.name)||'Survivor',gender:d.gender==='female'?'female':'male',color:slotColor(id)});
+    broadcastProfiles(); return; }
   if(d.t==='in'){ const r=MP.remote[id]; if(!r)return;
     r.x=d.x; r.z=d.z; r.y=d.y; r.yaw=d.yaw; r.crouch=!!d.c; r.hidden=!!d.h; r.hiddenSafe=!!d.hs; r.flash=!!d.f; r.noise=d.n||0;
     MP.net[id]={x:d.x,z:d.z,y:d.y,yaw:d.yaw,crouch:!!d.c,hidden:!!d.h,flash:!!d.f}; }
@@ -1249,23 +1322,28 @@ function hostData(c,d){ const id=c.__pid; if(!id)return;
 
 function guestData(d){
   if(d.t==='reject'){ $('lobbystatus').textContent='could not join: '+d.why; return; }
-  if(d.t==='you'){ MP.myId=d.id; $('lobbystatus').textContent='connected! waiting for the host to start...'; }
-  else if(d.t==='lobby'){ updateLobbyList(d.ids); }
-  else if(d.t==='start'){ startRun(d.d,d.items,d.dayp,d.sync); }
+  if(d.t==='you'){ MP.myId=d.id; if(d.profiles) for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]);
+    netToHost({t:'hello',name:PROFILE.name,gender:PROFILE.gender});
+    $('lobbystatus').textContent='connected! waiting for the host to start...'; updateLobbyList(); }
+  else if(d.t==='profiles'){ for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]); updateLobbyList(); }
+  else if(d.t==='lobby'){ updateLobbyList(); }
+  else if(d.t==='start'){ if(d.profiles) for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]);
+    startRun(d.d,d.items,d.dayp,d.sync); }
   else if(d.t==='ev'){ applyEv(d.ev); }
   else if(d.t==='st'){
+    if(d.profiles) for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]);
     MP.gnet={x:d.g[0],z:d.g[1],y:d.g[2],yaw:d.g[3],state:d.g[4],stun:d.g[5],tid:d.g[6]};
     if(d.day!==day){ day=d.day; $('dayline').textContent='DAY '+day+'  ·  '+DIFF.name; }
     for(const id in d.ps){ if(id===MP.myId)continue;
       const p=d.ps[id]; MP.net[id]={x:p[0],z:p[1],y:p[2],yaw:p[3],crouch:!!p[4],hidden:!!p[5],flash:!!p[6]}; }
-    for(const id in MP.net){ if(!(id in d.ps)) removeAvatar(id); } } }
+    for(const id in MP.net){ if(id===MP.myId||!(id in d.ps)) removeAvatar(id); } } }
 
 function netTick(dt){ if(!MP.active||!MP.started)return;
   MP.sendT+=dt; if(MP.sendT<0.08)return; MP.sendT=0;
   if(MP.isHost){
     const ps={}; ps[MP.myId]=[player.x,player.z,player.y,player.yaw,player.crouch?1:0,hidden?1:0,flashOn?1:0];
     for(const id in MP.remote){ const r=MP.remote[id]; ps[id]=[r.x,r.z,r.y,r.yaw,r.crouch?1:0,r.hidden?1:0,r.flash?1:0]; }
-    sendAll({t:'st',g:[granny.x,granny.z,granny.y,granny.yaw,granny.state,granny.stunT>0?1:0,granny.tid||''],ps,day}); }
+    sendAll({t:'st',g:[granny.x,granny.z,granny.y,granny.yaw,granny.state,granny.stunT>0?1:0,granny.tid||''],ps,day,profiles:MP.profiles}); }
   else netToHost({t:'in',x:player.x,z:player.z,y:player.y,yaw:player.yaw,
     c:player.crouch?1:0,h:hidden?1:0,hs:hiddenSafe?1:0,f:flashOn?1:0,n:player.noise}); }
 

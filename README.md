@@ -13,6 +13,8 @@ Escape together over peer-to-peer WebRTC (PeerJS — no game server needed, work
 - **HOST CO-OP** — pick the difficulty, get a 4-letter room code, and share it. Press START when everyone's in.
 - **JOIN CO-OP** — type the room code and wait in the lobby.
 
+Before any mode (solo, host, or join), you pick a **name** and **male/female character**. Teammates see your custom name floating above your human avatar — not "Player 1/2".
+
 How co-op plays:
 
 - Everyone hunts items into a **shared team inventory**; anyone can strip a door lock or start the car, and **one player escaping wins it for the whole team**.
