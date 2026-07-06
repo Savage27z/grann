@@ -320,8 +320,9 @@ function drawGrannyFace(){ const c=document.getElementById('jscanvas'),x=c.getCo
   x.fillStyle='rgba(120,10,10,.7)'; for(let i=0;i<8;i++){ const bx=180+Math.random()*150; x.fillRect(bx,400+Math.random()*20,4,30+Math.random()*60); } }
 
 /* ============================== WORLD GEOMETRY (2 STOREYS) ============================== */
-/* The whole plan is defined on a 20x16 grid and scaled up to 28x20 for multiplayer. */
-const SX=1.4, SZ=1.25; // house scale factors (x: 20->28, z: 16->20)
+/* Design grid 26×20, scaled to ~52×38 m — Granny-sized mansion feel. */
+const HX=13, HZ=10; // half-width / half-depth on the design grid
+const SX=2.0, SZ=1.9; // world scale (26×20 → ~52×38 m)
 const walls0=[], walls1=[];        // wall boxes per storey {x,z,w,d}
 const colliders0=[], colliders1=[];// furniture per storey (collision only)
 const wallsFor=y=> y>2.0?walls1:walls0;
@@ -337,17 +338,22 @@ function seg(fl,x1,z1,x2,z2,gaps){ // wall along axis with gaps [[a,b],...] in t
     if(horiz) arr.push({x:(a+b)/2,z:z1,w:b-a,d:0.32}); else arr.push({x:x1,z:(a+b)/2,w:0.32,d:b-a}); } }
 
 /* ---- GROUND FLOOR: front door gap on south wall at x -5..-3 ---- */
-seg(0,-10,-8, 10,-8); seg(0,-10,8, 10,8, [[-5,-3]]); seg(0,-10,-8,-10,8); seg(0,10,-8,10,8);
-seg(0,-10,0, 10,0, [[-7,-5],[0,2],[6,8]]);      // main east-west wall
-seg(0,-2,-8, -2,0, [[-5,-3]]);                   // bedroom | kitchen
-seg(0, 4,-8,  4,0, [[-5,-3]]);                   // kitchen | storage
-seg(0, 2, 0,  2,8, [[3,5]]);                     // living | study
+seg(0,-HX,-HZ, HX,-HZ); seg(0,-HX,HZ, HX,HZ, [[-5,-3]]); seg(0,-HX,-HZ,-HX,HZ); seg(0,HX,-HZ,HX,HZ);
+seg(0,-HX,0, HX,0, [[-8,-6],[-2,2],[6,10]]);     // main east-west wall + wider halls
+seg(0,-2,-HZ, -2,0, [[-6,-4]]);                  // bedroom | kitchen
+seg(0, 4,-HZ,  4,0, [[-6,-4]]);                  // kitchen | storage
+seg(0, 2, 0,  2,HZ, [[4,6]]);                    // living | study
+seg(0, 8,-HZ,  8,-2, [[-8,-5]]);                 // house | garage (door on north side)
+seg(0, 8,-2,  8,0);                              // garage | storage divider
+seg(0,-6, 6,  2,6);                              // living | dining divider
+seg(0,-2,-5,  2,-5);                             // bathroom nook wall
 
 /* ---- UPPER FLOOR: sewing room NW, stair landing NE, guest bedroom SW, attic SE ---- */
-seg(1,-10,-8, 10,-8); seg(1,-10,8, 10,8); seg(1,-10,-8,-10,8); seg(1,10,-8,10,8);
-seg(1,-10,0, 10,0, [[-6,-4],[5,7]]);             // east-west wall upstairs
-seg(1, 2,-8,  2,0, [[-5,-3]]);                   // sewing | landing
-seg(1,-3, 0, -3,8, [[3,5]]);                     // guest | attic
+seg(1,-HX,-HZ, HX,-HZ); seg(1,-HX,HZ, HX,HZ); seg(1,-HX,-HZ,-HX,HZ); seg(1,HX,-HZ,HX,HZ);
+seg(1,-HX,0, HX,0, [[-7,-5],[5,9]]);             // east-west wall upstairs
+seg(1, 2,-HZ,  2,0, [[-6,-4]]);                  // sewing | landing
+seg(1,-3, 0, -3,HZ, [[4,6]]);                    // guest | attic
+seg(1, 8,-HZ,  8,-2, [[-8,-5]]);                 // upper garage wing
 
 /* ---- STAIRCASE (in the storage room, rises south toward the landing) ---- */
 const STAIR={x1:8.2*SX,x2:9.8*SX,z1:-7.0*SZ,z2:-2.6*SZ};
@@ -366,7 +372,9 @@ function floorHeight(x,z,y){ // walkable height at (x,z), given current height y
 /* rooms granny patrols: [x,z,y] */
 const ROOMS = {
   bedroom:[-6,-4,0], kitchen:[1,-4,0], storage:[6.5,-4,0], living:[-4,4,0], study:[6,4,0],
-  sewing:[-4,-4,WALL_H], landing:[5.5,-4,WALL_H], guest:[-6.5,4,WALL_H], attic:[4,4,WALL_H] };
+  dining:[-2,8,0], garage:[10.5,-6,0], bathroom:[0,-6.5,0],
+  sewing:[-4,-4,WALL_H], landing:[5.5,-4,WALL_H], guest:[-6.5,4,WALL_H], attic:[4,4,WALL_H],
+  nursery:[0,-6,WALL_H], loft:[10,-6,WALL_H] };
 
 /* waypoint graph for granny — [x,z,y] */
 const WP=[
@@ -378,11 +386,14 @@ const WP=[
   /* 19-24 upper doorways */
   [2,-4,WALL_H],[-5,-0.9,WALL_H],[-5,0.9,WALL_H],[6,-0.9,WALL_H],[6,0.9,WALL_H],[-3,4,WALL_H],
   /* 25-27 stairs: top (on landing), mid (ramp), bottom (storage); 28 = clear exit into the storage room */
-  [9,-2.2,WALL_H],[9,-4.8,WALL_H*0.5],[9,-7.4,0],[6.8,-6.2,0]
+  [9,-2.2,WALL_H],[9,-4.8,WALL_H*0.5],[9,-7.4,0],[6.8,-6.2,0],
+  /* 29-34 new wing: dining, garage, bathroom, upper loft */
+  [-2,8,0],[10.5,-6,0],[0,-6.5,0],[-1,7,0],[11,-4,0],[10,-6,WALL_H]
 ];
 const EDGES=[[0,5],[5,1],[1,6],[6,2],[0,12],[12,7],[7,3],[1,13],[13,8],[8,3],[2,14],[14,9],[9,4],[3,10],[10,4],[3,11],
+  [3,29],[29,32],[7,32],[2,33],[33,30],[6,33],[1,31],
   [15,19],[19,16],[16,20],[20,21],[21,17],[15,22],[22,23],[23,18],[17,24],[24,18],
-  [15,25],[25,26],[26,27],[27,28],[28,2]];
+  [15,25],[25,26],[26,27],[27,28],[28,2],[15,34],[34,18]];
 // scale the plan up to the real house size
 WP.forEach(p=>{p[0]*=SX;p[1]*=SZ;});
 Object.values(ROOMS).forEach(r=>{r[0]*=SX;r[1]*=SZ;});
@@ -412,8 +423,8 @@ function collide(px,pz,r,y){ // circle vs boxes of the entity's storey, returns 
   return [px,pz]; }
 
 /* ============================== THREE SETUP ============================== */
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.075);
-const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,60);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020203); scene.fog=new THREE.FogExp2(0x020203,0.042);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,100);
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.getElementById('game').appendChild(renderer.domElement);
@@ -427,9 +438,9 @@ const wallTex=makeTex(x=>{ x.fillStyle='#4a4238'; x.fillRect(0,0,256,256);
   x.strokeStyle='rgba(0,0,0,.25)'; for(let i=0;i<7;i++){x.beginPath();x.moveTo(Math.random()*256,0);x.bezierCurveTo(Math.random()*256,80,Math.random()*256,180,Math.random()*256,256);x.stroke();} },2,1);
 const floorTex=makeTex(x=>{ x.fillStyle='#2b2118'; x.fillRect(0,0,256,256);
   for(let r=0;r<8;r++){ for(let i=0;i<4;i++){ x.fillStyle=`rgb(${38+Math.random()*18|0},${28+Math.random()*13|0},${18+Math.random()*9|0})`;
-    x.fillRect(i*64+(r%2)*32-32,r*32,63,31);} } x.fillStyle='rgba(0,0,0,.4)'; for(let i=0;i<400;i++)x.fillRect(Math.random()*256,Math.random()*256,2,2); },8,7);
+    x.fillRect(i*64+(r%2)*32-32,r*32,63,31);} } x.fillStyle='rgba(0,0,0,.4)'; for(let i=0;i<400;i++)x.fillRect(Math.random()*256,Math.random()*256,2,2); },12,10);
 const ceilTex=makeTex(x=>{ x.fillStyle='#241f1a'; x.fillRect(0,0,256,256); x.fillStyle='rgba(0,0,0,.3)';
-  for(let i=0;i<900;i++)x.fillRect(Math.random()*256,Math.random()*256,3,3); },6,5);
+  for(let i=0;i<900;i++)x.fillRect(Math.random()*256,Math.random()*256,3,3); },10,8);
 
 const matWall=new THREE.MeshStandardMaterial({map:wallTex,roughness:0.95});
 const matFloor=new THREE.MeshStandardMaterial({map:floorTex,roughness:0.9});
@@ -437,16 +448,16 @@ const matCeil=new THREE.MeshStandardMaterial({map:ceilTex,roughness:1});
 const matWood=new THREE.MeshStandardMaterial({color:0x4a3520,roughness:0.85});
 const matDark=new THREE.MeshStandardMaterial({color:0x2a1d12,roughness:0.9});
 
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(2*HX*SX+0.6,2*HZ*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
 // upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
 for(const s of [
-  {x:(-10*SX+STAIR.x1)/2,z:0,w:STAIR.x1+10*SX,d:16*SZ+0.6},              // everything west of the stairwell
-  {x:(STAIR.x1+10*SX)/2,z:(-8*SZ+STAIR.z1)/2,w:10*SX-STAIR.x1,d:STAIR.z1+8*SZ}, // north sliver
-  {x:(STAIR.x1+10*SX)/2,z:(STAIR.z2+8*SZ)/2,w:10*SX-STAIR.x1,d:8*SZ-STAIR.z2},  // south of the stairwell
+  {x:(-HX*SX+STAIR.x1)/2,z:0,w:STAIR.x1+HX*SX,d:2*HZ*SZ+0.6},
+  {x:(STAIR.x1+HX*SX)/2,z:(-HZ*SZ+STAIR.z1)/2,w:HX*SX-STAIR.x1,d:STAIR.z1+HZ*SZ},
+  {x:(STAIR.x1+HX*SX)/2,z:(STAIR.z2+HZ*SZ)/2,w:HX*SX-STAIR.x1,d:HZ*SZ-STAIR.z2},
 ]){ const m=new THREE.Mesh(new THREE.BoxGeometry(s.w,0.24,s.d),matFloor);
   m.position.set(s.x,WALL_H-0.12,s.z); m.castShadow=m.receiveShadow=true; scene.add(m); }
 // roof (upper ceiling)
-const roof=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matCeil); roof.rotation.x=Math.PI/2; roof.position.y=WALL_H*2; scene.add(roof);
+const roof=new THREE.Mesh(new THREE.PlaneGeometry(2*HX*SX+0.6,2*HZ*SZ+0.6),matCeil); roof.rotation.x=Math.PI/2; roof.position.y=WALL_H*2; scene.add(roof);
 // walls, both storeys
 for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
   const m=new THREE.Mesh(new THREE.BoxGeometry(w.w,WALL_H,w.d),matWall);
@@ -462,7 +473,7 @@ for(const [set,y0] of [[walls0,0],[walls1,WALL_H]]) for(const w of set){
   ban.position.set(STAIR.x1-0.05,WALL_H/2+0.5,(STAIR.z1+STAIR.z2)/2); ban.rotation.x=0; scene.add(ban); }
 
 // front door mesh
-const FRONT={x:-4*SX,z:8*SZ}; // door gap centre on the south wall
+const FRONT={x:-4*SX,z:HZ*SZ}; // door gap centre on the south wall
 const frontDoor=new THREE.Group();
 const doorPanel=new THREE.Mesh(new THREE.BoxGeometry(2.6,2.6,0.14),new THREE.MeshStandardMaterial({color:0x5a3a1a,roughness:0.8}));
 doorPanel.position.y=1.3; frontDoor.add(doorPanel);
@@ -480,9 +491,9 @@ const doorWallRef=walls0[walls0.length-1];
 scene.add(new THREE.AmbientLight(0x334,0.35));
 const bulbs=[];
 for(const [rx,rz,ry] of Object.values(ROOMS)){
-  const L=new THREE.PointLight(0xffcc88,6,13,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
+  const L=new THREE.PointLight(0xffcc88,6,18,2); L.position.set(rx,ry+WALL_H-0.3,rz); scene.add(L); bulbs.push(L);
   const bm=new THREE.Mesh(new THREE.SphereGeometry(0.07,8,8),new THREE.MeshBasicMaterial({color:0x664422})); bm.position.copy(L.position); scene.add(bm); }
-const flashlight=new THREE.SpotLight(0xfff4d6,0,18,0.55,0.6,1.1); flashlight.castShadow=true;
+const flashlight=new THREE.SpotLight(0xfff4d6,0,24,0.55,0.6,1.1); flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);
 camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.12,-0.12,0); flashlight.target.position.set(0,0,-5);
 scene.add(camera);
@@ -530,6 +541,27 @@ box(-9,0,2,1.3,0.8,0.8,matWood,true,1);                 // dresser
 box(8,0,6.5,1.5,1.1,1.5,matDark,true,1);                // crates
 box(0,0,7,1.2,0.9,1.2,matDark,true,1);                  // chest
 box(4.5,0,6.8,1.8,0.8,0.9,matWood,true,1);              // old desk
+// dining room (south wing)
+box(-2,0,8.2,2.8,0.78,1.4,matWood);                    // dining table
+box(-5.2,0,8.5,1.1,0.85,0.7,matDark);                  // dining chair
+box(1.2,0,8.5,1.1,0.85,0.7,matDark);                    // dining chair
+box(-2,0,9.5,1.6,0.55,0.5,matWood);                     // sideboard
+// bathroom nook
+box(0,0,-6.8,1.2,0.85,0.9,matDark);                    // sink cabinet
+box(1.2,0,-6.5,0.5,1.6,0.5,matDark,false);              // toilet
+// garage wing
+box(10.5,0,-6.5,2.4,0.9,1.8,matDark);                  // workbench
+box(11.8,0,-8.5,1.6,1.2,2.2,matDark);                   // tool cabinet
+box(9.5,0,-8.8,2.2,0.55,1.1,matDark);                   // oil drums
+// garage car (visual only)
+{ const carG=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.55,3.8),new THREE.MeshStandardMaterial({color:0x3a4555,roughness:0.7,metalness:0.3}));
+  body.position.y=0.55; carG.add(body);
+  const cab=new THREE.Mesh(new THREE.BoxGeometry(1.7,0.45,1.6),body.material); cab.position.set(0,0.95,-0.4); carG.add(cab);
+  for(const sx of [-0.85,0.85]){ const wM=new THREE.MeshStandardMaterial({color:0x111,roughness:0.9});
+    for(const wz of [1.1,-1.1]){ const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.14,10),wM);
+      w.rotation.z=Math.PI/2; w.position.set(sx,0.32,wz); carG.add(w); } }
+  carG.position.set(10.5*SX,0,-7.2*SZ); carG.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;}}); scene.add(carG); }
 
 /* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
 const hideSpots=[];
@@ -545,8 +577,8 @@ function wardrobe(x,z,ry,fl=0){ x*=SX; z*=SZ; const g=new THREE.Group();
   const fx=x+Math.sin(ry)*1.0, fz=z+Math.cos(ry)*1.0;
   hideSpots.push({x,z,ry,y:fl*WALL_H,standX:fx,standZ:fz,doors:[door,door2],kind:'wardrobe'}); }
 wardrobe(-9.2,-3,Math.PI/2); wardrobe(6.5,-7.3,0); wardrobe(9.2,5.8,-Math.PI/2);
-wardrobe(-1.5,-7.2,0,1);      // sewing room upstairs
-wardrobe(-9.3,7.2,Math.PI/2,1); // guest bedroom upstairs
+wardrobe(-1.5,-7.2,0,1); wardrobe(-9.3,7.2,Math.PI/2,1);
+wardrobe(10.5,-4.5,Math.PI/2);                            // garage wardrobe
 // under-bed hiding: bedroom bed (ground) + guest bed (upstairs); low eye, you can watch her feet
 hideSpots.push({x:-8.6*SX,z:-6.5*SZ,ry:0,y:0,standX:-8.6*SX,standZ:-5.2*SZ,kind:'bed'});
 hideSpots.push({x:-8.5*SX,z:5.5*SZ,ry:Math.PI,y:WALL_H,standX:-8.5*SX,standZ:4.2*SZ,kind:'bed'});
@@ -563,6 +595,7 @@ const CAR_POS={x:1.2*SX,z:-7.55*SZ};
 /* ------ creaky floorboards (noise hazards) ------ */
 const creaks=[
   {x:-6,z:0,w:2.2,d:2.6,fl:0},{x:1,z:0,w:2.2,d:2.6,fl:0},{x:7,z:0,w:2.2,d:2.6,fl:0},
+  {x:-2,z:7,w:2.4,d:2.4,fl:0},{x:10,z:-5,w:2.2,d:2.6,fl:0},
   {x:9,z:-3.6,w:1.8,d:2.2,fl:1},{x:2,z:-4,w:2.2,d:2.2,fl:1},{x:-5,z:0,w:2.2,d:2.6,fl:1},
 ].map(c=>({...c,x:c.x*SX,z:c.z*SZ,w:c.w*SX,d:c.d*SZ,cool:0}));
 for(const c of creaks){ const m=new THREE.Mesh(new THREE.PlaneGeometry(c.w,c.d),
@@ -579,12 +612,14 @@ function vase(x,topY,z){ x*=SX; z*=SZ; const g=new THREE.Group();
 vase(-1.9,0.95,-7.1);            // kitchen counter
 vase(-1.2,0.75,6.6);             // living side table
 vase(7.3,0.82,6.9);              // study desk
-vase(-4.5,WALL_H+0.8,-6.3);      // sewing table
-vase(4.9,WALL_H+0.8,6.6);        // attic desk
+vase(-4.5,WALL_H+0.8,-6.3); vase(4.9,WALL_H+0.8,6.6);
+vase(-2,0.88,8.0);             // dining table
+vase(10.5,0.98,-6.2);          // garage workbench
 
 /* ------ bear traps (Normal+; placed fresh every day) ------ */
 const TRAP_SPOTS=[[-4.5,-2,0],[0,2.2,0],[4.5,3,0],[-2,5.5,0],[3,-6,0],[-7,2,0],
-  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1]].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
+  [-1,-2,1],[4,2,1],[-6,2,1],[7,-5.5,1],[0,5.5,1],[-8,-2,1],
+  [-2,7.5,0],[10,-5,0],[11,-3,0],[0,-6,0]].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
 let traps=[];
 function buildTrapMesh(){ const g=new THREE.Group();
   const base=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,12),new THREE.MeshStandardMaterial({color:0x555a5e,metalness:0.8,roughness:0.35}));
@@ -597,21 +632,86 @@ function placeTraps(spots){ traps.forEach(t=>scene.remove(t.obj)); traps=[];
   for(const [x,z,fl] of (spots||[])){ const obj=buildTrapMesh(); obj.position.set(x,fl*WALL_H,z); scene.add(obj);
     traps.push({obj,x,z,y:fl*WALL_H,sprung:false}); } }
 
-/* ------ item spawn points [x,z,topY] — both storeys ------ */
+/* ------ item surfaces [x,z,topY,ry] — snapped to furniture tops, both storeys ------ */
 const UP=WALL_H;
-const SPAWNS=[
-  // ground floor
-  [-3.2,-6.6,0.9],[-8.6,-5.5,0.65],[-6,-1,0.05],       // bedroom
-  [-1,-6.6,1.05],[0.4,-2.2,0.88],[2.6,-6.6,2.0],        // kitchen
-  [5.2,-6.1,1.0],[4.8,-0.7,1.6],[7.5,-4.5,0.05],        // storage
-  [-8.5,4.9,1.0],[-1,6.3,0.85],[-4,2.6,0.6],            // living
-  [6.5,6.5,0.92],[8.9,2.4,1.7],[4.2,1.3,0.7],           // study
+const ITEM_SURFACES=[
+  // ground — bedroom & kitchen
+  [-3.2,-7.2,0.8,0.3],[-8.5,-6.2,0.65,1.1],[-6.5,-1.2,0.05,0],
+  [-0.8,-7.0,0.95,0],[-0.2,-2.4,0.78,0.5],[2.6,-7.0,1.9,0.2],
+  // storage & living
+  [5.0,-6.5,0.9,-0.4],[4.6,-0.8,2.2,0],[7.8,-4.2,0.05,0.8],
+  [-8.2,5.2,0.9,0],[-1.2,6.5,0.75,-0.2],[-4.2,2.8,0.6,0.4],
+  // study & new wing
+  [6.5,6.8,0.82,-0.3],[8.6,2.8,2.1,0],[4.0,1.6,0.6,0],
+  [-2.0,8.0,0.78,0],[0.2,-6.6,0.85,0],[10.5,-6.0,0.9,0.5],[11.5,-8.2,1.2,0],
   // upstairs
-  [-4,-6.1,UP+0.9],[-9.2,-3.4,UP+1.4],[0.8,-6.4,UP+1.0],[-7,-0.6,UP+0.7], // sewing
-  [3,-6.8,UP+1.2],[4.2,-0.6,UP+0.95],                    // landing
-  [-8.5,4.9,UP+0.65],[-9,1.6,UP+0.9],                    // guest
-  [8,6,UP+1.2],[0,6.6,UP+1.0],[4.5,6.4,UP+0.9],          // attic
-].map(s=>[s[0]*SX,s[1]*SZ,s[2]]);
+  [-4.0,-6.3,UP+0.8,0],[-9.0,-3.8,UP+2.0,0.2],[0.6,-6.5,UP+0.9,0],[-6.8,-0.8,UP+0.6,0],
+  [2.8,-7.0,UP+1.1,0],[4.0,-0.8,UP+0.85,0],
+  [-8.8,4.8,UP+0.65,0],[-8.8,1.8,UP+0.8,0.3],
+  [7.8,6.0,UP+1.1,0],[0.2,6.8,UP+0.9,0],[4.5,6.6,UP+0.8,-0.2],
+].map(s=>[s[0]*SX,s[1]*SZ,s[2],s[3]]);
+
+const matMetal=new THREE.MeshStandardMaterial({color:0x888899,metalness:0.85,roughness:0.28});
+const matMetalDark=new THREE.MeshStandardMaterial({color:0x555a62,metalness:0.9,roughness:0.35});
+const matPlastic=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:0.65});
+const matGasCan=new THREE.MeshStandardMaterial({color:0xcc3311,roughness:0.55});
+const matGasCap=new THREE.MeshStandardMaterial({color:0x333,metalness:0.7,roughness:0.4});
+
+function shadowize(g){ g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}}); return g; }
+
+function itemMeshFor(it){
+  const g=new THREE.Group();
+  if(it.id==='key'||it.id==='carkey'){
+    const col=it.id==='carkey'?0x44aa55:0xffd34d;
+    const m=new THREE.MeshStandardMaterial({color:col,metalness:0.92,roughness:0.18});
+    const bow=new THREE.Mesh(new THREE.TorusGeometry(0.055,0.014,10,20),m); bow.rotation.x=Math.PI/2; bow.position.y=0.04; g.add(bow);
+    const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.028,0.14,0.012),m); shaft.position.set(0.04,-0.04,0); shaft.rotation.z=-0.35; g.add(shaft);
+    const bit=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.018,0.012),m); bit.position.set(0.07,-0.1,0); bit.rotation.z=-0.35; g.add(bit);
+    if(it.id==='carkey'){ const fob=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.05,0.02),new THREE.MeshStandardMaterial({color:0x222,roughness:0.5}));
+      fob.position.set(-0.02,0.04,0); g.add(fob); }
+  } else if(it.id==='hammer'){
+    const head=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.07,0.05),matMetalDark); head.position.set(0,0.06,0); g.add(head);
+    const claw=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.05,0.04),matMetalDark); claw.position.set(0.1,0.06,0); g.add(claw);
+    const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.026,0.28,8),matWood); handle.position.y=-0.1; g.add(handle);
+    g.rotation.z=Math.PI/2;
+  } else if(it.id==='pliers'){
+    const hM=new THREE.MeshStandardMaterial({color:0xcc4444,roughness:0.45,metalness:0.55});
+    const jawM=new THREE.MeshStandardMaterial({color:0xaaa,metalness:0.75,roughness:0.35});
+    const h1=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.12,0.03),hM); h1.position.set(-0.03,0.02,0); h1.rotation.z=0.18; g.add(h1);
+    const h2=h1.clone(); h2.position.x=0.03; h2.rotation.z=-0.18; g.add(h2);
+    const j1=new THREE.Mesh(new THREE.BoxGeometry(0.025,0.08,0.02),jawM); j1.position.set(-0.04,0.1,0); j1.rotation.z=0.35; g.add(j1);
+    const j2=j1.clone(); j2.position.x=0.04; j2.rotation.z=-0.35; g.add(j2);
+    g.rotation.x=Math.PI/2;
+  } else if(it.id==='gascan'){
+    const can=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.24,0.12),matGasCan); can.position.y=0.12; g.add(can);
+    const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.1,8),matGasCap); spout.position.set(0.06,0.28,0); spout.rotation.z=-0.6; g.add(spout);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.03,8),matGasCap); cap.position.set(0.06,0.34,0); g.add(cap);
+    const handle=new THREE.Mesh(new THREE.TorusGeometry(0.06,0.012,6,12,Math.PI),matGasCap); handle.rotation.y=Math.PI/2; handle.position.set(0,0.26,0); g.add(handle);
+  } else { // screwdriver
+    const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.04,0.1,10),new THREE.MeshStandardMaterial({color:0xbb66ee,roughness:0.55}));
+    handle.position.y=0.05; g.add(handle);
+    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.18,8),matMetal); shaft.position.y=-0.04; g.add(shaft);
+    const tip=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.004,0.04,6),matMetalDark); tip.position.y=-0.14; g.add(tip);
+  }
+  return shadowize(g);
+}
+
+function placeOnSurface(mesh,surface){
+  const [sx,sz,sy,sry]=surface;
+  mesh.rotation.y=sry||0;
+  mesh.position.set(sx,sy,sz);
+  const box=new THREE.Box3().setFromObject(mesh);
+  mesh.position.y=sy-box.min.y;
+  mesh.position.x=sx; mesh.position.z=sz;
+}
+
+function makeItemHint(it,surface){
+  const [sx,sz,sy]=surface;
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.12,0.2,24),
+    new THREE.MeshBasicMaterial({color:it.color,transparent:true,opacity:0.28,depthWrite:false,side:THREE.DoubleSide}));
+  ring.rotation.x=-Math.PI/2; ring.position.set(sx,sy+0.008,sz);
+  return ring;
+}
 
 /* ============================== GRANNY MODEL ============================== */
 function buildGranny(){ const g=new THREE.Group();
@@ -667,57 +767,36 @@ function updateMpStatus(){ const nm=sanitizeName(PROFILE.name)||'Survivor';
 
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
 
-function itemMeshFor(it){ let mesh;
-  if(it.id==='key'||it.id==='carkey'){ mesh=new THREE.Group();
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(0.09,0.025,8,16),new THREE.MeshStandardMaterial({color:it.color,metalness:0.9,roughness:0.25}));
-    const shaft=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.22,0.04),ring.material); shaft.position.y=-0.16; mesh.add(ring,shaft); }
-  else if(it.id==='hammer'){ mesh=new THREE.Group();
-    const h=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.1,0.1),new THREE.MeshStandardMaterial({color:0x777,metalness:0.8,roughness:0.3}));
-    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.34,8),matWood); s.position.y=-0.18; mesh.add(h,s); }
-  else if(it.id==='pliers'){ mesh=new THREE.Group();
-    const a=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.34,0.05),new THREE.MeshStandardMaterial({color:it.color,metalness:0.6,roughness:0.4}));
-    a.rotation.z=0.25; const b=a.clone(); b.rotation.z=-0.25; mesh.add(a,b); }
-  else if(it.id==='gascan'){ mesh=new THREE.Group();
-    const can=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.32,0.14),new THREE.MeshStandardMaterial({color:it.color,roughness:0.6}));
-    const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.12,8),can.material); spout.position.set(0.09,0.2,0); spout.rotation.z=-0.5;
-    mesh.add(can,spout); }
-  else { mesh=new THREE.Group();
-    const s=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.3,8),new THREE.MeshStandardMaterial({color:0x999,metalness:0.9,roughness:0.2}));
-    const hd=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.14,8),new THREE.MeshStandardMaterial({color:it.color,roughness:0.5}));
-    hd.position.y=0.2; mesh.add(s,hd); }
-  return mesh; }
-
 function makeSpawnPlan(){ // 6 items scattered across both storeys: 3 down + 3 up
-  const ground=shuffle(SPAWNS.filter(s=>s[2]<WALL_H)), upper=shuffle(SPAWNS.filter(s=>s[2]>=WALL_H));
+  const ground=shuffle(ITEM_SURFACES.filter(s=>s[2]<WALL_H)), upper=shuffle(ITEM_SURFACES.filter(s=>s[2]>=WALL_H));
   const spots=shuffle(ground.slice(0,3).concat(upper.slice(0,3)));
-  return ITEMS.map((it,i)=>({id:it.id,x:spots[i][0],z:spots[i][1],y:spots[i][2]})); }
+  return ITEMS.map((it,i)=>({id:it.id,surface:spots[i]})); }
 function spawnItemsFromPlan(plan){ itemMeshes.forEach(m=>scene.remove(m)); hintSprites.forEach(s=>scene.remove(s)); itemMeshes=[]; hintSprites=[];
   plan.forEach(pl=>{ const it=ITEMS.find(a=>a.id===pl.id);
-    if(inventory[it.id]||appliedToDoor[it.id])return; // persists across days
-    const sx=pl.x, sz=pl.z, sy=pl.y; const mesh=itemMeshFor(it);
-    const gl=new THREE.PointLight(it.color,1.5,2.5); mesh.add(gl);
-    mesh.position.set(sx,sy+0.15,sz); mesh.userData.item=it; scene.add(mesh); itemMeshes.push(mesh);
-    if(DIFF.hints){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
-      const grd=x.createRadialGradient(32,32,2,32,32,30); grd.addColorStop(0,'#'+it.color.toString(16).padStart(6,'0')); grd.addColorStop(1,'transparent');
-      x.fillStyle=grd; x.fillRect(0,0,64,64);
-      const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,opacity:0.55}));
-      sp.position.set(sx,sy+0.7,sz); sp.scale.set(0.6,0.6,1); scene.add(sp); hintSprites.push(sp); mesh.userData.hint=sp; } }); }
+    if(inventory[it.id]||appliedToDoor[it.id])return;
+    const mesh=itemMeshFor(it);
+    placeOnSurface(mesh,pl.surface);
+    mesh.userData.item=it; mesh.userData.surface=pl.surface; scene.add(mesh); itemMeshes.push(mesh);
+    if(DIFF.hints){ const hint=makeItemHint(it,pl.surface); scene.add(hint); hintSprites.push(hint); mesh.userData.hint=hint; } }); }
 
-function pickDartSpot(itemPlan){ // a free spawn point, avoiding the item spots
-  const used=new Set((itemPlan||itemMeshes.map(m=>({x:m.position.x,z:m.position.z}))).map(p=>p.x+','+p.z));
-  const free=SPAWNS.filter(s=>!used.has(s[0]+','+s[1]));
+function pickDartSpot(itemPlan){
+  const used=new Set((itemPlan||[]).map(p=>p.surface[0]+','+p.surface[1]));
+  const free=ITEM_SURFACES.filter(s=>!used.has(s[0]+','+s[1]));
   return free[Math.random()*free.length|0]; }
 function makeDayPlan(itemPlan){ return {
   traps: shuffle(TRAP_SPOTS.slice()).slice(0,DIFF.traps),
   dart: (hasDart||dartMesh)?null:pickDartSpot(itemPlan) }; }
 function spawnDart(spot){ if(hasDart||dartMesh||!spot)return;
-  const [sx,sz,sy]=spot;
   dartMesh=new THREE.Group();
-  const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.26,8),new THREE.MeshStandardMaterial({color:0x44ff99,roughness:0.3,transparent:true,opacity:0.85}));
-  const needle=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.14,6),new THREE.MeshStandardMaterial({color:0xccc,metalness:0.9}));
-  needle.position.y=-0.2; dartMesh.add(tube,needle);
-  dartMesh.add(new THREE.PointLight(0x44ff99,1.2,2));
-  dartMesh.rotation.z=0.5; dartMesh.position.set(sx,sy+0.2,sz); scene.add(dartMesh); }
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.1,8),new THREE.MeshStandardMaterial({color:0x2a5a3a,roughness:0.5}));
+  const flight=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018,0.06,8),new THREE.MeshStandardMaterial({color:0x66aa77,roughness:0.45}));
+  flight.position.y=0.05; dartMesh.add(body,flight);
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(0.012,0.04,8),new THREE.MeshStandardMaterial({color:0xbbb,metalness:0.85,roughness:0.25}));
+  tip.position.y=-0.06; tip.rotation.x=Math.PI; dartMesh.add(tip);
+  shadowize(dartMesh);
+  dartMesh.rotation.z=0.4; dartMesh.rotation.x=0.15;
+  placeOnSurface(dartMesh,[spot[0],spot[1],spot[2],spot[3]||0.6]);
+  scene.add(dartMesh); }
 
 function updateItemsHUD(){
   const row=it=>{ const st=appliedToDoor[it.id]?'USED ✓':(inventory[it.id]?'HELD ✓':'???');
@@ -1413,7 +1492,7 @@ function loop(){ requestAnimationFrame(loop);
         const s=Math.sin(player.yaw),c=Math.cos(player.yaw);
         let nx=player.x+(mx*c + mz*s)*sp*dt, nz=player.z+(-mx*s + mz*c)*sp*dt;
         [nx,nz]=collide(nx,nz,PLAYER_R,player.y);
-        nx=Math.max(-10*SX-0.2,Math.min(10*SX+0.2,nx)); nz=Math.max(-8*SZ-0.2,Math.min(8*SZ+0.6,nz));
+        nx=Math.max(-HX*SX-0.2,Math.min(HX*SX+0.2,nx)); nz=Math.max(-HZ*SZ-0.2,Math.min(HZ*SZ+0.6,nz));
         player.x=nx; player.z=nz;
         player.y=floorHeight(player.x,player.z,player.y);
         player.bobT+=dt*sp*1.8; player.stepT+=dt*sp;
@@ -1421,7 +1500,7 @@ function loop(){ requestAnimationFrame(loop);
         if(player.stepT>stepLen){ player.stepT=0; sfxStep(player.crouch?0.02:(player.run?0.09:0.045),120+Math.random()*30); }
         makeNoise(player.crouch?1.2:(player.run?10:4)); }
       // win check: walk through open door (ground floor only)
-      if(doorOpen && player.y<1 && player.z>8*SZ && Math.abs(player.x-FRONT.x)<1.9){ tryEscapeDoor(); }
+      if(doorOpen && player.y<1 && player.z>HZ*SZ && Math.abs(player.x-FRONT.x)<1.9){ tryEscapeDoor(); }
     }
     /* ---- hazards ---- */
     if(!hidden){
@@ -1454,9 +1533,8 @@ function loop(){ requestAnimationFrame(loop);
     const eyeY=player.y+baseEye+(hidden?0:Math.sin(player.bobT)*0.035);
     camera.position.set(player.x,eyeY,player.z);
     camera.rotation.order='YXZ'; camera.rotation.y=player.yaw; camera.rotation.x=player.pitch;
-    // hint sprites bob
-    hintSprites.forEach((s,i)=>{ s.position.y+=Math.sin(t*2+i)*0.0015; });
-    itemMeshes.forEach((m,i)=>{ m.rotation.y=t*1.5+i; });
+    // hint rings pulse subtly on easy mode
+    hintSprites.forEach((s,i)=>{ s.material.opacity=0.18+Math.sin(t*1.8+i)*0.1; });
     // proximity heartbeat + status
     const gd=Math.hypot(granny.x-player.x,granny.z-player.z,granny.y-player.y);
     heartBeat(Math.max(0,1-gd/9));
