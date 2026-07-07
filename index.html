@@ -443,6 +443,8 @@ const matRust=new THREE.MeshStandardMaterial({color:0x4a3530,roughness:0.92,meta
 const matPale=new THREE.MeshStandardMaterial({color:0x5a5048,roughness:1});
 const matStain=new THREE.MeshBasicMaterial({color:0x160606,transparent:true,opacity:0.38,depthWrite:false});
 const matGold=new THREE.MeshStandardMaterial({color:0x6a5020,roughness:0.65,metalness:0.35});
+const matSkin=new THREE.MeshStandardMaterial({color:0x847568,roughness:0.96});
+const matBlood=new THREE.MeshBasicMaterial({color:0x5a0808,transparent:true,opacity:0.88,depthWrite:false});
 
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
 // upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
@@ -627,6 +629,15 @@ function bloodTex(kind){
     for(let i=0;i<28;i++){ const a=Math.random()*6.28, r=20+Math.random()*85;
       ctx.fillStyle=`rgba(${90+Math.random()*40|0},${8+Math.random()*8|0},${6+Math.random()*6|0},${0.45+Math.random()*0.4})`;
       ctx.beginPath(); ctx.arc(128+Math.cos(a)*r,128+Math.sin(a)*r,2+Math.random()*12,0,Math.PI*2); ctx.fill(); }
+  } else if(kind==='hand'){
+    ctx.fillStyle='rgba(95,10,8,0.7)'; ctx.beginPath();
+    ctx.ellipse(128,148,28,22,0,0,Math.PI*2); ctx.fill();
+    for(const [ox,oy,w,h,r] of [[128,88,10,38,0],[108,96,9,34,-0.35],[148,96,9,34,0.35],[98,118,8,28,-0.5],[158,118,8,28,0.5]]){
+      ctx.save(); ctx.translate(ox,oy); ctx.rotate(r);
+      ctx.beginPath(); ctx.ellipse(0,0,w,h,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  } else if(kind==='smear'){
+    ctx.fillStyle='rgba(100,10,8,0.65)'; ctx.beginPath(); ctx.ellipse(128,128,110,28,0.15,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(80,8,8,0.45)'; ctx.beginPath(); ctx.ellipse(60,132,35,12,-0.2,0,Math.PI*2); ctx.fill();
   } else {
     ctx.fillStyle='rgba(100,10,8,0.75)'; ctx.fillRect(112,8,18,210);
     for(let y=35;y<210;y+=22){ ctx.beginPath(); ctx.ellipse(121,y,5+Math.random()*5,9,0,0,Math.PI*2); ctx.fill(); }
@@ -638,6 +649,23 @@ function bloodPool(x,z,w,d,fl=0,rot=0){
 function bloodWall(x,y,z,ry,w,h,fl=0,kind='splatter'){
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:bloodTex(kind),transparent:true,depthWrite:false}));
   m.position.set(x*SX,fl*WALL_H+y,z*SZ); m.rotation.y=ry; scene.add(m); }
+function bloodHand(x,y,z,ry,fl=0){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(0.32,0.38),new THREE.MeshBasicMaterial({map:bloodTex('hand'),transparent:true,depthWrite:false}));
+  m.position.set(x*SX,fl*WALL_H+y,z*SZ); m.rotation.y=ry; scene.add(m); }
+function saintTex(){
+  const c=document.createElement('canvas'); c.width=128; c.height=168;
+  const ctx=c.getContext('2d'); ctx.fillStyle='#181008'; ctx.fillRect(0,0,128,168);
+  ctx.fillStyle='#241c12'; ctx.fillRect(10,10,108,148);
+  ctx.strokeStyle='rgba(175,145,55,0.32)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(64,50,24,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle='#3a3228'; ctx.beginPath(); ctx.ellipse(64,54,15,19,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#120e08'; ctx.fillRect(40,72,48,78);
+  ctx.strokeStyle='rgba(0,0,0,0.9)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(18,28); ctx.lineTo(62,68); ctx.lineTo(112,132); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(108,22); ctx.lineTo(72,58); ctx.lineTo(38,148); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(64,40); ctx.lineTo(48,108); ctx.stroke();
+  ctx.fillStyle='rgba(55,8,8,0.55)'; ctx.fillRect(56,64,16,22);
+  return new THREE.CanvasTexture(c); }
 function paintingTex(style){
   const c=document.createElement('canvas'); c.width=256; c.height=348;
   const ctx=c.getContext('2d'); ctx.fillStyle='#18120c'; ctx.fillRect(0,0,256,348);
@@ -676,12 +704,33 @@ function relIcon(x,y,z,ry,fl=0,type='cross'){
   if(type==='cross'){
     const v=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.36,0.045),matWood); v.position.y=0.18; g.add(v);
     const h=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.035,0.045),matWood); h.position.set(0,0.24,0); g.add(h);
+  } else if(type==='saint'){
+    const fr=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.36,0.04),matGold); fr.position.y=0.18; g.add(fr);
+    const chip=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.07,0.02),matGold); chip.position.set(0.15,0.06,0.025); chip.rotation.z=0.55; g.add(chip);
+    const fig=new THREE.Mesh(new THREE.PlaneGeometry(0.22,0.28),new THREE.MeshBasicMaterial({map:saintTex()}));
+    fig.position.set(0,0.18,0.026); g.add(fig);
+    g.rotation.z=0.09+((x*3|0)%5)*0.015;
   } else {
     const fr=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.32,0.035),matGold); fr.position.y=0.16; g.add(fr);
     const fig=new THREE.Mesh(new THREE.PlaneGeometry(0.17,0.24),new THREE.MeshBasicMaterial({color:0x141008}));
     fig.position.set(0,0.16,0.022); g.add(fig);
   }
   decor(g,x,y,z,ry,fl); }
+function cageBody(g){
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.17,0.42,8),matFabric);
+  torso.position.set(0,0.26,0); torso.rotation.z=0.18; g.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),matSkin);
+  head.position.set(0.07,0.5,0.02); head.rotation.z=0.55; head.scale.y=1.12; g.add(head);
+  const armL=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.28,6),matFabric);
+  armL.position.set(0.1,0.2,0.08); armL.rotation.z=-0.75; armL.rotation.x=0.35; g.add(armL);
+  const armR=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.24,6),matFabric);
+  armR.position.set(-0.08,0.18,-0.06); armR.rotation.z=0.6; g.add(armR);
+  const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.04,0.32,6),matDark);
+  leg.position.set(-0.05,0.08,0.06); leg.rotation.x=0.55; g.add(leg);
+  const stain=new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.26),matBlood);
+  stain.position.set(0.01,0.3,0.11); stain.rotation.y=0.25; g.add(stain);
+  const drip=new THREE.Mesh(new THREE.PlaneGeometry(0.06,0.14),matBlood);
+  drip.position.set(0.04,0.12,0.12); g.add(drip); }
 function rosaryHook(x,y,z,ry,fl=0){
   const g=new THREE.Group();
   const hook=new THREE.Mesh(new THREE.TorusGeometry(0.045,0.012,4,8,Math.PI),matRust);
@@ -698,7 +747,7 @@ function ironCage(x,z,ry,fl=0){
     const bx=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,w,6),matRust); bx.rotation.z=Math.PI/2; bx.position.y=lv; g.add(bx);
     const bz=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,d,6),matRust); bz.rotation.x=Math.PI/2; bz.position.y=lv; g.add(bz); }
   const top=new THREE.Mesh(new THREE.BoxGeometry(w,0.028,d),matRust); top.position.y=h; g.add(top);
-  const bone=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.022,0.32,6),matPale); bone.rotation.z=0.9; bone.position.set(0.04,0.07,-0.02); g.add(bone);
+  cageBody(g);
   decor(g,x,0,z,ry,fl,true,0.9,0.85); }
 
 // --- GROUND FLOOR ---
@@ -720,6 +769,20 @@ bloodPool(2.4,-7.1,0.35,0.3,0,-0.2);                     // drip by fridge
 bloodWall(-0.6,0.52,-7.78,0,0.6,0.38,0,'splatter');      // splatter on north wall
 bloodWall(2.55,0.15,-7.78,0,0.32,0.95,0,'drip');         // long drip by fridge
 bloodWall(0.2,0.42,-7.58,Math.PI,0.85,0.22,0,'splatter'); // counter front smear
+bloodPool(-0.9,-7.25,0.65,0.5,0,0.45);                   // west counter pool
+bloodPool(1.05,-7.45,0.85,0.6,0,-0.1);                   // pool by back door
+bloodPool(1.3,-7.05,0.4,0.32,0,0.15);
+bloodPool(0.2,-7.35,0.55,0.35,0,-0.25);
+bloodPool(-1.2,-6.2,0.45,0.35,0,0.55);                   // hall outside kitchen
+bloodPool(0.5,-4.8,0.3,0.22,0,0.3);                      // trail in corridor
+bloodPool(0.8,-6.5,0.28,0.2,0,-0.4);
+bloodWall(-1.3,0.28,-7.78,0,0.48,0.52,0,'splatter');
+bloodWall(3.85,0.32,-7.78,0,0.42,0.48,0,'splatter');     // east kitchen wall
+bloodWall(0.9,0.72,-7.78,0,0.55,0.35,0,'splatter');      // high burst
+bloodWall(-0.3,0.08,-7.58,Math.PI,0.55,0.18,0,'smear');   // dragged along counter
+bloodHand(-2.1,0.88,-7.78,0);                            // bloody hand print
+bloodHand(3.2,0.45,-7.78,0);                             // second hand lower
+bloodWall(1.2,0.05,-7.78,0,0.35,0.25,0,'smear');         // floor-level smear on wall
 rug(-3.8,4.2,2.8,2.2,0x2a1c14);                          // living room rug
 oldTV(-7.2,5.2,Math.PI/2);                               // dead TV glow
 floorLamp(-2.2,5.8,-Math.PI/4);                          // weak lamp by sofa
@@ -748,12 +811,17 @@ box(-3.5,0,7.5,0.9,0.04,0.55,matDark,false);             // doormat by front hal
   decor(g,-6.2,7.2,Math.PI); }
 // hall — religious icons along the corridor walls
 relIcon(-9.72,1.48,0.3,Math.PI/2,0,'cross');
-relIcon(-9.72,1.02,-0.6,Math.PI/2,0,'icon');
+relIcon(-9.72,1.02,-0.6,Math.PI/2,0,'saint');
 relIcon(9.72,1.42,0.4,-Math.PI/2,0,'cross');
-relIcon(9.72,0.98,-0.2,-Math.PI/2,0,'icon');
+relIcon(9.72,0.98,-0.2,-Math.PI/2,0,'saint');
 relIcon(-0.8,1.52,0.16,0,0,'cross');                    // hall divider, north face
-relIcon(4.2,1.38,0.16,0,0,'icon');
+relIcon(4.2,1.38,0.16,0,0,'saint');
+relIcon(1.8,1.22,0.16,0,0,'saint');                      // second saint on divider
+relIcon(-9.72,1.55,-1.4,Math.PI/2,0,'saint');            // cracked saint, lower west hall
+relIcon(9.72,1.58,1.0,-Math.PI/2,0,'saint');             // east hall
 rosaryHook(-2.8,1.15,0.16,0);                            // rosary on hall wall
+bloodPool(-2.0,0.2,0.35,0.28,0,0.2);                     // dried blood in hall
+bloodPool(5.5,-0.3,0.3,0.25,0,-0.15);
 // huge paintings — tall frames on long walls
 hugePainting(-9.68,1.62,-2.6,Math.PI/2,'portrait',0,0.05);
 hugePainting(-9.68,1.62,3.8,Math.PI/2,'landscape',0,-0.04);
