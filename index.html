@@ -442,6 +442,7 @@ const matFabric=new THREE.MeshStandardMaterial({color:0x342820,roughness:1});
 const matRust=new THREE.MeshStandardMaterial({color:0x4a3530,roughness:0.92,metalness:0.15});
 const matPale=new THREE.MeshStandardMaterial({color:0x5a5048,roughness:1});
 const matStain=new THREE.MeshBasicMaterial({color:0x160606,transparent:true,opacity:0.38,depthWrite:false});
+const matGold=new THREE.MeshStandardMaterial({color:0x6a5020,roughness:0.65,metalness:0.35});
 
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(20*SX+0.6,16*SZ+0.6),matFloor); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
 // upper floor slab (with a hole for the stairwell) — doubles as ground floor ceiling
@@ -612,6 +613,93 @@ function slumpedDoll(x,z,ry,fl=0){
   const body=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,0.28,8),matFabric); body.position.set(0.05,0.16,0); body.rotation.z=1.2; g.add(body);
   const head=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,8),matPale); head.position.set(0.18,0.08,0.04); g.add(head);
   decor(g,x,0,z,ry,fl); }
+function bloodTex(kind){
+  const c=document.createElement('canvas'); c.width=c.height=256;
+  const ctx=c.getContext('2d');
+  if(kind==='pool'){
+    const g=ctx.createRadialGradient(128,128,6,128,128,118);
+    g.addColorStop(0,'rgba(130,14,12,0.88)'); g.addColorStop(0.45,'rgba(75,8,8,0.55)'); g.addColorStop(1,'rgba(25,3,3,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(128,128,102,78,0.25,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(95,10,8,0.65)'; ctx.beginPath(); ctx.ellipse(148,168,14,28,0.2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(92,152,10,20,-0.3,0,Math.PI*2); ctx.fill();
+  } else if(kind==='splatter'){
+    ctx.fillStyle='rgba(105,11,9,0.8)'; ctx.beginPath(); ctx.arc(128,128,38,0,Math.PI*2); ctx.fill();
+    for(let i=0;i<28;i++){ const a=Math.random()*6.28, r=20+Math.random()*85;
+      ctx.fillStyle=`rgba(${90+Math.random()*40|0},${8+Math.random()*8|0},${6+Math.random()*6|0},${0.45+Math.random()*0.4})`;
+      ctx.beginPath(); ctx.arc(128+Math.cos(a)*r,128+Math.sin(a)*r,2+Math.random()*12,0,Math.PI*2); ctx.fill(); }
+  } else {
+    ctx.fillStyle='rgba(100,10,8,0.75)'; ctx.fillRect(112,8,18,210);
+    for(let y=35;y<210;y+=22){ ctx.beginPath(); ctx.ellipse(121,y,5+Math.random()*5,9,0,0,Math.PI*2); ctx.fill(); }
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping; return t; }
+function bloodPool(x,z,w,d,fl=0,rot=0){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w*SX,d*SZ),new THREE.MeshBasicMaterial({map:bloodTex('pool'),transparent:true,depthWrite:false}));
+  m.rotation.x=-Math.PI/2; m.rotation.z=rot; m.position.set(x*SX,fl*WALL_H+0.016,z*SZ); scene.add(m); }
+function bloodWall(x,y,z,ry,w,h,fl=0,kind='splatter'){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:bloodTex(kind),transparent:true,depthWrite:false}));
+  m.position.set(x*SX,fl*WALL_H+y,z*SZ); m.rotation.y=ry; scene.add(m); }
+function paintingTex(style){
+  const c=document.createElement('canvas'); c.width=256; c.height=348;
+  const ctx=c.getContext('2d'); ctx.fillStyle='#18120c'; ctx.fillRect(0,0,256,348);
+  if(style==='portrait'){
+    ctx.fillStyle='#221a12'; ctx.fillRect(18,18,220,312);
+    ctx.fillStyle='#0c0a08'; ctx.beginPath(); ctx.ellipse(128,118,52,62,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#161210'; ctx.fillRect(82,178,92,140);
+    ctx.fillStyle='#4a0a0a'; ctx.fillRect(108,195,40,38); ctx.fillRect(118,240,18,55);
+    ctx.fillStyle='#080808'; ctx.fillRect(100,108,56,8); ctx.fillRect(108,100,40,24);
+  } else if(style==='religious'){
+    ctx.fillStyle='#120e08'; ctx.fillRect(0,0,256,348);
+    ctx.strokeStyle='#554430'; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(128,28); ctx.lineTo(128,300); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(58,108); ctx.lineTo(198,108); ctx.stroke();
+    ctx.fillStyle='rgba(170,140,60,0.22)'; ctx.beginPath(); ctx.arc(128,42,26,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(60,8,8,0.55)'; ctx.fillRect(118,118,20,140);
+  } else if(style==='landscape'){
+    ctx.fillStyle='#060504'; ctx.fillRect(0,0,256,210);
+    ctx.fillStyle='#0e0c08'; for(let i=0;i<9;i++){ ctx.beginPath(); ctx.moveTo(i*32,348); ctx.lineTo(i*32+18,190-i*8); ctx.lineTo(i*32+42,348); ctx.fill(); }
+    ctx.fillStyle='#080808'; ctx.fillRect(0,210,256,138);
+  } else {
+    ctx.fillStyle='#141008'; ctx.fillRect(40,120,176,200);
+    ctx.strokeStyle='#3a3020'; ctx.lineWidth=2;
+    for(let i=0;i<5;i++){ ctx.beginPath(); ctx.moveTo(128,280); ctx.quadraticCurveTo(80+i*24,180,70+i*30,120); ctx.stroke(); }
+    ctx.fillStyle='#1a1008'; ctx.fillRect(108,260,40,52);
+  }
+  return new THREE.CanvasTexture(c); }
+function hugePainting(x,y,z,ry,style,fl=0,tilt=0){
+  const g=new THREE.Group(); const pw=1.38, ph=1.92;
+  const frame=new THREE.Mesh(new THREE.BoxGeometry(pw+0.14,ph+0.14,0.07),matWood); frame.position.y=ph/2; g.add(frame);
+  const art=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),new THREE.MeshBasicMaterial({map:paintingTex(style)}));
+  art.position.set(0,ph/2,0.045); g.add(art);
+  g.rotation.z=tilt; decor(g,x,y,z,ry,fl); }
+function relIcon(x,y,z,ry,fl=0,type='cross'){
+  const g=new THREE.Group();
+  if(type==='cross'){
+    const v=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.36,0.045),matWood); v.position.y=0.18; g.add(v);
+    const h=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.035,0.045),matWood); h.position.set(0,0.24,0); g.add(h);
+  } else {
+    const fr=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.32,0.035),matGold); fr.position.y=0.16; g.add(fr);
+    const fig=new THREE.Mesh(new THREE.PlaneGeometry(0.17,0.24),new THREE.MeshBasicMaterial({color:0x141008}));
+    fig.position.set(0,0.16,0.022); g.add(fig);
+  }
+  decor(g,x,y,z,ry,fl); }
+function rosaryHook(x,y,z,ry,fl=0){
+  const g=new THREE.Group();
+  const hook=new THREE.Mesh(new THREE.TorusGeometry(0.045,0.012,4,8,Math.PI),matRust);
+  hook.rotation.x=Math.PI/2; hook.position.y=0.08; g.add(hook);
+  for(let i=0;i<9;i++){ const b=new THREE.Mesh(new THREE.SphereGeometry(0.014,6,6),matPale);
+    b.position.set(Math.sin(i*0.32)*0.05, -0.04-i*0.065, 0.035); g.add(b); }
+  decor(g,x,y,z,ry,fl); }
+function ironCage(x,z,ry,fl=0){
+  const g=new THREE.Group(); const w=0.78, h=1.18, d=0.72;
+  const base=new THREE.Mesh(new THREE.BoxGeometry(w,0.045,d),matRust); base.position.y=0.022; g.add(base);
+  for(const [px,pz] of [[-w/2+0.05,d/2-0.05],[w/2-0.05,d/2-0.05],[-w/2+0.05,-d/2+0.05],[w/2-0.05,-d/2+0.05]]){
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.026,h,6),matRust); post.position.set(px,h/2,pz); g.add(post); }
+  for(let lv=0.15;lv<h;lv+=0.17){
+    const bx=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,w,6),matRust); bx.rotation.z=Math.PI/2; bx.position.y=lv; g.add(bx);
+    const bz=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,d,6),matRust); bz.rotation.x=Math.PI/2; bz.position.y=lv; g.add(bz); }
+  const top=new THREE.Mesh(new THREE.BoxGeometry(w,0.028,d),matRust); top.position.y=h; g.add(top);
+  const bone=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.022,0.32,6),matPale); bone.rotation.z=0.9; bone.position.set(0.04,0.07,-0.02); g.add(bone);
+  decor(g,x,0,z,ry,fl,true,0.9,0.85); }
 
 // --- GROUND FLOOR ---
 rug(-7.2,-5.2,2.4,1.8,0x231810);                         // bedroom rug, worn
@@ -626,6 +714,12 @@ box(-0.4,0.95,-7.15,0.22,0.18,0.22,matRust,false);       // pot on counter
 box(-1.8,0.95,-7.05,0.14,0.28,0.14,matPale,false);       // bottle
 box(-1.5,0.95,-6.85,0.12,0.22,0.12,matPale,false);       // second bottle, knocked
 wallDecal(1.5,0.4,-7.82,0,0.7,0.5);                      // rust stain above back door
+bloodPool(0.5,-6.9,1.0,0.75);                            // pool by counter
+bloodPool(1.8,-5.4,0.5,0.4,0,0.35);                      // smear toward table
+bloodPool(2.4,-7.1,0.35,0.3,0,-0.2);                     // drip by fridge
+bloodWall(-0.6,0.52,-7.78,0,0.6,0.38,0,'splatter');      // splatter on north wall
+bloodWall(2.55,0.15,-7.78,0,0.32,0.95,0,'drip');         // long drip by fridge
+bloodWall(0.2,0.42,-7.58,Math.PI,0.85,0.22,0,'splatter'); // counter front smear
 rug(-3.8,4.2,2.8,2.2,0x2a1c14);                          // living room rug
 oldTV(-7.2,5.2,Math.PI/2);                               // dead TV glow
 floorLamp(-2.2,5.8,-Math.PI/4);                          // weak lamp by sofa
@@ -652,6 +746,21 @@ box(-3.5,0,7.5,0.9,0.04,0.55,matDark,false);             // doormat by front hal
   const tub=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.18,0.55,10),matRust); tub.position.y=0.28; g.add(tub);
   const um=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.75,6),matDark); um.position.set(0.04,0.72,0); um.rotation.z=0.12; g.add(um);
   decor(g,-6.2,7.2,Math.PI); }
+// hall — religious icons along the corridor walls
+relIcon(-9.72,1.48,0.3,Math.PI/2,0,'cross');
+relIcon(-9.72,1.02,-0.6,Math.PI/2,0,'icon');
+relIcon(9.72,1.42,0.4,-Math.PI/2,0,'cross');
+relIcon(9.72,0.98,-0.2,-Math.PI/2,0,'icon');
+relIcon(-0.8,1.52,0.16,0,0,'cross');                    // hall divider, north face
+relIcon(4.2,1.38,0.16,0,0,'icon');
+rosaryHook(-2.8,1.15,0.16,0);                            // rosary on hall wall
+// huge paintings — tall frames on long walls
+hugePainting(-9.68,1.62,-2.6,Math.PI/2,'portrait',0,0.05);
+hugePainting(-9.68,1.62,3.8,Math.PI/2,'landscape',0,-0.04);
+hugePainting(9.68,1.62,5.8,-Math.PI/2,'portrait',0,0.03);
+hugePainting(9.68,1.62,-5.2,-Math.PI/2,'religious',0,-0.06);
+hugePainting(-1.2,1.62,7.72,Math.PI,'religious',0,0.04); // above front hall
+hugePainting(5.5,1.62,7.72,Math.PI,'landscape',0,-0.03);
 cobweb(-9.3,2.85,-7.5,Math.PI/4);                        // kitchen corner
 cobweb(9.5,2.85,7.2,-Math.PI/3);                         // study corner
 
@@ -660,6 +769,7 @@ mannequin(-2.2,-5.8,Math.PI*0.08,1);                     // sewing room — head
 box(-3.8,0.8,-6.2,0.08,0.12,0.08,matRust,false,1);       // scissors on table
 box(-4.3,0.82,-6.5,0.14,0.1,0.14,matFabric,false,1);     // thread spool
 wheelchair(7.2,5.5,-Math.PI/3,1);                        // attic wheelchair
+ironCage(5.2,6.5,Math.PI/4,1);                           // rusted cage, bone inside
 slumpedDoll(1.2,6.2,0.6,1);                              // doll in attic corner
 box(-8.8,0,4.8,0.7,0.38,0.45,matDark,false,1);           // guest luggage
 box(-8.5,0.38,4.75,0.65,0.06,0.4,matFabric,false,1);   // lid half open
@@ -670,6 +780,8 @@ box(-8.5,0.38,4.75,0.65,0.06,0.4,matFabric,false,1);   // lid half open
 cobweb(-9.2,5.5,-6.8,Math.PI/3,1,0.9);                   // sewing room ceiling
 cobweb(8.8,5.5,6.5,-Math.PI/4,1,1.1);                     // attic ceiling
 cobweb(3.5,5.5,-6.5,0,1,0.8);                            // landing
+hugePainting(-9.68,1.62,-4.8,Math.PI/2,'religious',1,-0.05); // sewing room
+hugePainting(9.68,1.62,6.2,-Math.PI/2,'portrait',1,0.04);    // attic east wall
 wallDecal(-9.75,0.4,6.2,Math.PI/2,0.45,0.9,1);            // guest room stain
 
 /* ------ hiding spots (wardrobes, fl: 0 ground / 1 upstairs) ------ */
