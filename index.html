@@ -646,6 +646,8 @@ function bloodTex(kind){
 function bloodPool(x,z,w,d,fl=0,rot=0){
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w*SX,d*SZ),new THREE.MeshBasicMaterial({map:bloodTex('pool'),transparent:true,depthWrite:false}));
   m.rotation.x=-Math.PI/2; m.rotation.z=rot; m.position.set(x*SX,fl*WALL_H+0.016,z*SZ); scene.add(m); }
+function bloodTrail(pts,fl=0){
+  pts.forEach(([x,z,w,d,r],i)=>bloodPool(x,z,w||0.26,d||0.18,fl,r??i*0.28)); }
 function bloodWall(x,y,z,ry,w,h,fl=0,kind='splatter'){
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:bloodTex(kind),transparent:true,depthWrite:false}));
   m.position.set(x*SX,fl*WALL_H+y,z*SZ); m.rotation.y=ry; scene.add(m); }
@@ -716,11 +718,11 @@ function relIcon(x,y,z,ry,fl=0,type='cross'){
     fig.position.set(0,0.16,0.022); g.add(fig);
   }
   decor(g,x,y,z,ry,fl); }
-function cageBody(g){
+function cageBody(g,reach=false){
   const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.17,0.42,8),matFabric);
   torso.position.set(0,0.26,0); torso.rotation.z=0.18; g.add(torso);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),matSkin);
-  head.position.set(0.07,0.5,0.02); head.rotation.z=0.55; head.scale.y=1.12; g.add(head);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.11,8,8),matSkin);
+  head.position.set(0.06,0.52,0.04); head.rotation.z=0.48; head.scale.y=1.12; g.add(head);
   const armL=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.28,6),matFabric);
   armL.position.set(0.1,0.2,0.08); armL.rotation.z=-0.75; armL.rotation.x=0.35; g.add(armL);
   const armR=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.24,6),matFabric);
@@ -730,7 +732,14 @@ function cageBody(g){
   const stain=new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.26),matBlood);
   stain.position.set(0.01,0.3,0.11); stain.rotation.y=0.25; g.add(stain);
   const drip=new THREE.Mesh(new THREE.PlaneGeometry(0.06,0.14),matBlood);
-  drip.position.set(0.04,0.12,0.12); g.add(drip); }
+  drip.position.set(0.04,0.12,0.12); g.add(drip);
+  if(reach){
+    const reachArm=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.032,0.48,6),matSkin);
+    reachArm.position.set(0.04,0.36,0.42); reachArm.rotation.x=1.05; reachArm.rotation.z=-0.15; g.add(reachArm);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(0.058,6,6),matSkin);
+    hand.position.set(0.08,0.18,0.62); g.add(hand);
+    const claw=new THREE.Mesh(new THREE.PlaneGeometry(0.05,0.06),matBlood);
+    claw.position.set(0.08,0.16,0.66); g.add(claw); } }
 function rosaryHook(x,y,z,ry,fl=0){
   const g=new THREE.Group();
   const hook=new THREE.Mesh(new THREE.TorusGeometry(0.045,0.012,4,8,Math.PI),matRust);
@@ -740,6 +749,7 @@ function rosaryHook(x,y,z,ry,fl=0){
   decor(g,x,y,z,ry,fl); }
 function ironCage(x,z,ry,fl=0){
   const g=new THREE.Group(); const w=0.78, h=1.18, d=0.72;
+  cageBody(g,true); // body + arm reaching through front bars
   const base=new THREE.Mesh(new THREE.BoxGeometry(w,0.045,d),matRust); base.position.y=0.022; g.add(base);
   for(const [px,pz] of [[-w/2+0.05,d/2-0.05],[w/2-0.05,d/2-0.05],[-w/2+0.05,-d/2+0.05],[w/2-0.05,-d/2+0.05]]){
     const post=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.026,h,6),matRust); post.position.set(px,h/2,pz); g.add(post); }
@@ -747,7 +757,8 @@ function ironCage(x,z,ry,fl=0){
     const bx=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,w,6),matRust); bx.rotation.z=Math.PI/2; bx.position.y=lv; g.add(bx);
     const bz=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,d,6),matRust); bz.rotation.x=Math.PI/2; bz.position.y=lv; g.add(bz); }
   const top=new THREE.Mesh(new THREE.BoxGeometry(w,0.028,d),matRust); top.position.y=h; g.add(top);
-  cageBody(g);
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.92,0.028),matRust);
+  door.position.set(-0.26,0.46,0.37); door.rotation.y=-0.62; g.add(door);
   decor(g,x,0,z,ry,fl,true,0.9,0.85); }
 
 // --- GROUND FLOOR ---
@@ -822,6 +833,10 @@ relIcon(9.72,1.58,1.0,-Math.PI/2,0,'saint');             // east hall
 rosaryHook(-2.8,1.15,0.16,0);                            // rosary on hall wall
 bloodPool(-2.0,0.2,0.35,0.28,0,0.2);                     // dried blood in hall
 bloodPool(5.5,-0.3,0.3,0.25,0,-0.15);
+// blood trail: hall → storage → stairs (ground floor)
+bloodTrail([[2.5,-5.8,0.32,0.22,0.4],[4.5,-6.2,0.28,0.2,0.55],[6.2,-6.6,0.3,0.22,0.15],
+  [7.8,-6.9,0.26,0.2,-0.2],[8.8,-7.2,0.24,0.18,0.35],[9.2,-6.8,0.22,0.2,0.5]],0);
+bloodWall(8.5,0.12,-6.5,Math.PI/2,0.35,0.22,0,'smear');  // smear on stair wall
 // huge paintings — tall frames on long walls
 hugePainting(-9.68,1.62,-2.6,Math.PI/2,'portrait',0,0.05);
 hugePainting(-9.68,1.62,3.8,Math.PI/2,'landscape',0,-0.04);
@@ -837,7 +852,13 @@ mannequin(-2.2,-5.8,Math.PI*0.08,1);                     // sewing room — head
 box(-3.8,0.8,-6.2,0.08,0.12,0.08,matRust,false,1);       // scissors on table
 box(-4.3,0.82,-6.5,0.14,0.1,0.14,matFabric,false,1);     // thread spool
 wheelchair(7.2,5.5,-Math.PI/3,1);                        // attic wheelchair
-ironCage(5.2,6.5,Math.PI/4,1);                           // rusted cage, bone inside
+ironCage(5.2,6.5,Math.PI/4,1);                           // body visible through open door + reaching arm
+bloodPool(5.0,6.15,0.95,0.75,1,0.2);                     // pool under cage
+bloodPool(4.6,5.85,0.55,0.4,1,-0.15);                     // drip leading to cage
+// blood trail: stairs → landing → attic cage (upstairs)
+bloodTrail([[8.8,-6.5,0.24,0.18,0.3],[8.5,-4.5,0.28,0.2,0.1],[7.2,-2.8,0.26,0.2,-0.25],
+  [6.5,-0.5,0.3,0.22,0.45],[5.8,1.8,0.28,0.2,0.15],[5.2,3.8,0.32,0.22,-0.1],[5.0,5.2,0.35,0.24,0.35]],1);
+bloodWall(8.2,0.08,-5.2,Math.PI/2,0.4,0.18,1,'smear');   // drag mark on landing wall
 slumpedDoll(1.2,6.2,0.6,1);                              // doll in attic corner
 box(-8.8,0,4.8,0.7,0.38,0.45,matDark,false,1);           // guest luggage
 box(-8.5,0.38,4.75,0.65,0.06,0.4,matFabric,false,1);   // lid half open
