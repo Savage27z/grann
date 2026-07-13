@@ -78,6 +78,10 @@
   #endcard p{color:#998;font-size:17px;letter-spacing:1px;line-height:1.7;max-width:560px}
   #endcard button{margin-top:24px;padding:14px 40px;background:#200;border:1px solid #722;color:#daa;font-family:inherit;font-size:18px;letter-spacing:3px;cursor:pointer;pointer-events:auto}
   #endcard button:hover{background:#500;color:#fff}
+  #endcard button:disabled{opacity:.45;cursor:default}
+  #endactions{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:8px}
+  #endsecondary{background:#120812;border-color:#522;color:#a98;font-size:15px;padding:10px 28px}
+  #endhint{color:#776;font-size:13px;letter-spacing:1px;line-height:1.6;max-width:480px;margin-top:14px}
   #pause{display:none;background:rgba(0,0,0,.85);z-index:25}
   #pause h1{color:#966;font-size:40px;letter-spacing:6px}
   #pause p{color:#665;font-size:14px;letter-spacing:1px;line-height:2}
@@ -191,7 +195,13 @@
 
 <div id="daycard" class="overlay"><h1 id="daytitle">DAY 2</h1><p id="daysub">She put you back in the bedroom...</p></div>
 
-<div id="endcard" class="overlay"><h1 id="endtitle">YOU ESCAPED</h1><p id="endtext"></p><button onclick="location.reload()">PLAY AGAIN</button></div>
+<div id="endcard" class="overlay"><h1 id="endtitle">YOU ESCAPED</h1><p id="endtext"></p>
+  <div id="endactions">
+    <button id="endprimary" type="button">PLAY AGAIN</button>
+    <button id="endsecondary" type="button" style="display:none">BACK TO MENU</button>
+  </div>
+  <p id="endhint"></p>
+</div>
 
 <div id="pause" class="overlay"><h1>PAUSED</h1><p>Click anywhere to resume.<br><br>WASD move &middot; SHIFT run &middot; C crouch &middot; F flashlight &middot; E interact</p></div>
 
@@ -1228,6 +1238,42 @@ function resetWorldDay(plan){ // shared per-day world reset (granny sim only mat
   $('status').textContent=''; updateItemsHUD(); }
 
 function fmtTime(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); }
+function mpConnected(){ if(!MP.active)return false;
+  if(MP.isHost) return !!(MP.peer&&MP.peer.open);
+  return !!(MP.host&&MP.host.open); }
+function backToMenu(){
+  destroyMpPeer();
+  MP.active=false; MP.started=false; MP.isHost=false; MP.pendingHost=false;
+  gamePhase='menu';
+  ['endcard','hud','menu','lobby','profile','daycard','pause','jumpscare'].forEach(i=>$(i).style.display='none');
+  if(IS_TOUCH)$('touchui').style.display='none';
+  $('landing').style.display='flex';
+  updateMpStatus(); }
+function rematchCoop(){
+  if(!MP.active||!MP.isHost||!mpConnected()){ backToMenu(); return; }
+  $('endcard').style.display='none';
+  hidden=false; hiddenSafe=false; hideSpot=null;
+  for(const id in MP.remote) MP.remote[id]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
+  MP.net={}; MP.gnet=null; MP.escSent=false;
+  hasDart=false; if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
+  const items=makeSpawnPlan(), dayp=makeDayPlan(items);
+  MP.started=true; MP.startMsg={t:'start',d:MP.diffIdx,items,dayp,profiles:MP.profiles};
+  sendAll(MP.startMsg);
+  startRun(MP.diffIdx,items,dayp); }
+function setupEndButtons(){
+  const btn=$('endprimary'), sub=$('endsecondary'), hint=$('endhint');
+  btn.disabled=false; sub.style.display='none'; hint.textContent='';
+  if(!MP.active){ btn.textContent='PLAY AGAIN'; btn.onclick=()=>location.reload(); return; }
+  if(MP.isHost&&mpConnected()){
+    btn.textContent='PLAY AGAIN WITH GROUP'; btn.onclick=rematchCoop;
+    sub.textContent='NEW ROOM (NEW CODE)'; sub.style.display='inline-block'; sub.onclick=backToMenu;
+    hint.textContent='Everyone who stayed connected gets another round — no new code needed.'; return; }
+  if(!MP.isHost&&mpConnected()){
+    btn.textContent='WAITING FOR HOST...'; btn.disabled=true; btn.onclick=null;
+    sub.textContent='LEAVE'; sub.style.display='inline-block'; sub.onclick=backToMenu;
+    hint.textContent='The host can start another round for the whole group.'; return; }
+  btn.textContent='PLAY AGAIN'; btn.onclick=()=>location.reload();
+  hint.textContent='Connection lost. Host must create a new room and share a new code.'; }
 function endGame(won,how,who){ if(gamePhase==='end')return; gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
   $('hud').style.display='none'; $('touchui').style.display='none';
   $('endcard').style.display='flex';
@@ -1243,7 +1289,8 @@ function endGame(won,how,who){ if(gamePhase==='end')return; gamePhase='end'; doc
     sfxUnlock(); }
   else{ $('endtitle').textContent='GAME OVER'; $('endtitle').style.color='#f22';
     $('endtext').textContent='Day 5 has ended after '+fmtTime(runT)+'. Nobody will ever find you. Granny keeps the house very, very quiet.';
-    sfxSting(); } }
+    sfxSting(); }
+  setupEndButtons(); }
 
 /* ============================== INTERACTION (net-aware) ============================== */
 function findInteractTarget(px,py,pz){ // what a player standing at (px,py,pz) can use
@@ -1466,6 +1513,7 @@ document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>
 function startRun(dIdx,itemPlan,dayPlan,sync){
   DIFF=DIFFS[dIdx]; MP.diffIdx=dIdx; MP.escSent=false; MP.started=MP.active;
   $('menu').style.display='none'; $('lobby').style.display='none'; $('landing').style.display='none'; $('profile').style.display='none';
+  $('endcard').style.display='none';
   $('hud').style.display='block';
   if(IS_TOUCH)$('touchui').style.display='block';
   day=1; runT=0; inventory={}; appliedToDoor={}; doorOpen=false; hasDart=false;
@@ -1681,12 +1729,18 @@ function joinRoom(code,retry=0){
       $('lobbystatus').textContent='connected! waiting for the host to start...'; });
     c.on('data',guestData);
     const bye=(err)=>{ clearTimeout(joinTimer); MP.connecting=false;
-      if(gamePhase==='play'||gamePhase==='end'){
+      if(gamePhase==='play'){
         $('endtitle').textContent='HOST LEFT'; $('endtitle').style.color='#f22';
         $('endtext').textContent='The connection to the host was lost.';
-        $('endcard').style.display='flex'; gamePhase='end'; }
+        $('endcard').style.display='flex'; gamePhase='end'; setupEndButtons(); }
+      else if(gamePhase==='end'){
+        $('endhint').textContent='Host left. Ask them to create a new room and share a new code.';
+        $('endsecondary').textContent='BACK TO MENU'; $('endsecondary').style.display='inline-block';
+        $('endsecondary').onclick=backToMenu;
+        $('endprimary').textContent='PLAY AGAIN'; $('endprimary').disabled=false;
+        $('endprimary').onclick=()=>location.reload(); }
       else if(err&&err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
-      else $('lobbystatus').textContent='disconnected from host.'; };
+      else if(gamePhase!=='end') $('lobbystatus').textContent='disconnected from host.'; };
     c.on('close',()=>bye()); c.on('error',e=>bye(e)); }); }
 
 function hostData(c,d){ const id=c.__pid; if(!id)return;
@@ -1753,7 +1807,7 @@ function grannyNetUpdate(dt){ const n=MP.gnet; if(!n)return;
   granny.obj.rotation.y=granny.yaw; }
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAvatar,setPlayerProfile,startRun,SX,SZ,FRONT,CAR_POS,
+window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAvatar,setPlayerProfile,startRun,endGame,rematchCoop,backToMenu,SX,SZ,FRONT,CAR_POS,
   showAvatar(id,gender,name,opts={}){ opts=opts||{}; gamePhase='play'; MP.myId='CAM'; MP.active=true;
     ['landing','menu','lobby','profile','daycard','endcard','pause','jumpscare'].forEach(i=>$(i).style.display='none');
     $('hud').style.display='block';
@@ -1873,6 +1927,8 @@ function loop(){ requestAnimationFrame(loop);
   renderer.render(scene,camera);
 }
 loop();
+addEventListener('pagehide',()=>{ destroyMpPeer(); });
+addEventListener('beforeunload',()=>{ destroyMpPeer(); });
 </script>
 </body>
 </html>
