@@ -1014,9 +1014,10 @@ const AV_HAIR_M=[0x2a2018,0x0e0c0a,0x4a3018,0x1c1408];
 const AV_HAIR_F=[0x1a1208,0x3a2818,0x0a0806,0x2a1808];
 
 /* ---- multiplayer state (PeerJS co-op, host-authoritative granny) ---- */
-const MP={active:false,isHost:false,pendingHost:false,started:false,peer:null,host:null,conns:[],
-  remote:{}, net:{}, avatars:{}, profiles:{}, gnet:null,
+const MP={active:false,isHost:false,pendingHost:false,started:false,connecting:false,peer:null,host:null,conns:[],
+  remote:{}, net:{}, avatars:{}, profiles:{}, gnet:null,startMsg:null,
   myId:'P1', code:'', diffIdx:2, escSent:false, sendT:0};
+const PEER_CFG={host:'0.peerjs.com',port:443,path:'/',secure:true,key:'peerjs',debug:0};
 function sanitizeName(s){ s=(s||'').trim().replace(/\s+/g,' ').slice(0,14).replace(/[^a-zA-Z0-9 _-]/g,''); return s; }
 function slotColor(id){ return AV_COLORS[(parseInt(String(id).replace('P',''),10)-1)%4]||AV_COLORS[0]; }
 function myProfile(){ return {name:sanitizeName(PROFILE.name)||'Survivor',gender:PROFILE.gender==='female'?'female':'male',color:slotColor(MP.myId||'P1')}; }
@@ -1456,6 +1457,7 @@ $('profcontinue').addEventListener('click',proceedFromProfile);
 $('profname').addEventListener('keydown',e=>{ if(e.key==='Enter')proceedFromProfile(); });
 
 document.querySelectorAll('.diffbtn').forEach(b=>b.addEventListener('click',()=>{
+  if(MP.connecting)return;
   audioInit(); AC.resume&&AC.resume(); startAmbient();
   const dIdx=+b.dataset.d;
   if(MP.pendingHost){ createRoom(dIdx); return; }
@@ -1596,15 +1598,35 @@ function updateLobbyList(){ const ids=lobbyIds();
   }).join('')||'<div>connecting...</div>'; }
 function broadcastProfiles(){ sendAll({t:'profiles',profiles:MP.profiles}); updateLobbyList(); }
 
-function createRoom(dIdx){
-  MP.pendingHost=false; MP.active=true; MP.isHost=true; MP.myId='P1'; MP.diffIdx=dIdx; DIFF=DIFFS[dIdx];
-  MP.profiles={P1:myProfile()}; MP.net={}; MP.avatars={}; nextPid=2;
+function destroyMpPeer(){ MP.connecting=false;
+  if(MP.host){ try{ MP.host.close(); }catch(e){} MP.host=null; }
+  for(const c of MP.conns){ try{ c.close(); }catch(e){} }
+  MP.conns=[]; MP.remote={};
+  if(MP.peer){ try{ MP.peer.destroy(); }catch(e){} MP.peer=null; } }
+function resetMpLobbyState(isHost){
+  destroyMpPeer();
+  MP.active=true; MP.isHost=!!isHost; MP.started=false; MP.startMsg=null; MP.gnet=null;
+  MP.net={}; MP.avatars={}; MP.escSent=false; MP.sendT=0; nextPid=2; }
+
+function createRoom(dIdx,retry=0){
+  if(MP.connecting)return;
+  MP.pendingHost=false; resetMpLobbyState(true);
+  MP.myId='P1'; MP.diffIdx=dIdx; DIFF=DIFFS[dIdx];
+  MP.profiles={P1:myProfile()};
   MP.code=makeCode(); showLobby('····',true); $('lobbystatus').textContent='creating room...';
-  const peer=new Peer('grannyhouse-'+MP.code); MP.peer=peer;
-  peer.on('open',()=>{ $('roomcode').textContent=MP.code; $('lobbystatus').textContent='share the code with your friends'; });
+  MP.connecting=true;
+  const peer=new Peer('grannyhouse-'+MP.code,PEER_CFG); MP.peer=peer;
+  peer.on('open',()=>{ MP.connecting=false; $('roomcode').textContent=MP.code;
+    $('lobbystatus').textContent='share the code with your friends'; updateLobbyList(); });
   peer.on('error',err=>{
-    if(err.type==='unavailable-id'){ MP.code=makeCode(); peer.destroy(); createRoom(dIdx); }
-    else $('lobbystatus').textContent='network error: '+err.type; });
+    MP.connecting=false;
+    if(err.type==='unavailable-id'&&retry<6){ MP.code=makeCode(); destroyMpPeer(); createRoom(dIdx,retry+1); return; }
+    if((err.type==='network'||err.type==='socket-error'||err.type==='server-error')&&retry<3){
+      destroyMpPeer(); $('lobbystatus').textContent='reconnecting...';
+      setTimeout(()=>createRoom(dIdx,retry+1),900); return; }
+    $('lobbystatus').textContent=err.type==='browser-incompatible'
+      ?'browser blocked WebRTC — try Chrome or Firefox'
+      :('network error: '+err.type+'. try again in a moment.'); });
   peer.on('connection',c=>{
     if(MP.conns.length>=3){
       c.on('open',()=>{ try{c.send({t:'reject',why:'room full'});}catch(e){}
@@ -1634,21 +1656,38 @@ $('startmp').addEventListener('click',()=>{ if(!MP.isHost)return;
   sendAll(MP.startMsg);
   startRun(MP.diffIdx,items,dayp); });
 
-function joinRoom(code){
-  MP.active=true; MP.isHost=false; MP.code=code; MP.profiles={}; MP.net={}; MP.avatars={};
+function joinRoom(code,retry=0){
+  if(MP.connecting)return;
+  code=(code||'').trim().toUpperCase();
+  if(code.length!==4){ $('joinrow').style.display='block'; return; }
+  resetMpLobbyState(false);
+  MP.code=code; MP.profiles={};
   showLobby(code,false); $('lobbystatus').textContent='connecting...';
-  const peer=new Peer(); MP.peer=peer;
-  peer.on('error',err=>{ if(err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
-    else $('lobbystatus').textContent='network error: '+err.type; });
+  MP.connecting=true;
+  const peer=new Peer(PEER_CFG); MP.peer=peer;
+  let joinTimer=setTimeout(()=>{ if(MP.connecting&&gamePhase!=='play'){
+      MP.connecting=false; $('lobbystatus').textContent='timed out — check the code and try again.'; }},15000);
+  peer.on('error',err=>{
+    clearTimeout(joinTimer); MP.connecting=false;
+    if((err.type==='network'||err.type==='socket-error'||err.type==='server-error')&&retry<3){
+      destroyMpPeer(); $('lobbystatus').textContent='reconnecting...';
+      setTimeout(()=>joinRoom(code,retry+1),900); return; }
+    if(err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
+    else $('lobbystatus').textContent=err.type==='browser-incompatible'
+      ?'browser blocked WebRTC — try Chrome or Firefox'
+      :('network error: '+err.type); });
   peer.on('open',()=>{ const c=peer.connect('grannyhouse-'+code,{reliable:true}); MP.host=c;
-    c.on('open',()=>{ $('lobbystatus').textContent='connected! waiting for the host to start...'; });
+    c.on('open',()=>{ clearTimeout(joinTimer); MP.connecting=false;
+      $('lobbystatus').textContent='connected! waiting for the host to start...'; });
     c.on('data',guestData);
-    const bye=()=>{ if(gamePhase==='play'||gamePhase==='end'){
+    const bye=(err)=>{ clearTimeout(joinTimer); MP.connecting=false;
+      if(gamePhase==='play'||gamePhase==='end'){
         $('endtitle').textContent='HOST LEFT'; $('endtitle').style.color='#f22';
         $('endtext').textContent='The connection to the host was lost.';
         $('endcard').style.display='flex'; gamePhase='end'; }
+      else if(err&&err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
       else $('lobbystatus').textContent='disconnected from host.'; };
-    c.on('close',bye); c.on('error',bye); }); }
+    c.on('close',()=>bye()); c.on('error',e=>bye(e)); }); }
 
 function hostData(c,d){ const id=c.__pid; if(!id)return;
   if(d.t==='hello'){ setPlayerProfile(id,{name:sanitizeName(d.name)||'Survivor',gender:d.gender==='female'?'female':'male',color:slotColor(id)});
