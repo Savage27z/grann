@@ -146,7 +146,8 @@
     <input id="joincode" maxlength="4" placeholder="CODE" autocomplete="off">
     <button id="joingo">JOIN</button>
   </div>
-  <div class="hint">HEADPHONES RECOMMENDED &middot; SHE HEARS EVERYTHING<br>Co-op: use the host&apos;s current room code each session</div>
+  <div id="joinhint" style="color:#556;font-size:11px;letter-spacing:1px;margin-top:8px;min-height:16px"></div>
+  <div class="hint">HEADPHONES RECOMMENDED &middot; SHE HEARS EVERYTHING<br>Playing again? Host: use PLAY AGAIN WITH GROUP. Refreshed? Ask host for the current code.</div>
 </div>
 
 <div id="profile" class="overlay">
@@ -1028,6 +1029,16 @@ const MP={active:false,isHost:false,pendingHost:false,started:false,connecting:f
   remote:{}, net:{}, avatars:{}, profiles:{}, gnet:null,startMsg:null,
   myId:'P1', code:'', diffIdx:2, escSent:false, sendT:0};
 const PEER_CFG={host:'0.peerjs.com',port:443,path:'/',secure:true,key:'peerjs',debug:0};
+function destroyMpPeer(){ MP.connecting=false;
+  if(MP.host){ try{ MP.host.close(); }catch(e){} MP.host=null; }
+  for(const c of MP.conns){ try{ c.close(); }catch(e){} }
+  MP.conns=[]; MP.remote={};
+  if(MP.peer){ try{ MP.peer.destroy(); }catch(e){} MP.peer=null; } }
+function resetMpLobbyState(isHost){
+  destroyMpPeer();
+  MP.active=true; MP.isHost=!!isHost; MP.started=false; MP.startMsg=null; MP.gnet=null;
+  MP.net={}; MP.avatars={}; MP.escSent=false; MP.sendT=0; nextPid=2; }
+let nextPid=2;
 function sanitizeName(s){ s=(s||'').trim().replace(/\s+/g,' ').slice(0,14).replace(/[^a-zA-Z0-9 _-]/g,''); return s; }
 function slotColor(id){ return AV_COLORS[(parseInt(String(id).replace('P',''),10)-1)%4]||AV_COLORS[0]; }
 function myProfile(){ return {name:sanitizeName(PROFILE.name)||'Survivor',gender:PROFILE.gender==='female'?'female':'male',color:slotColor(MP.myId||'P1')}; }
@@ -1239,8 +1250,23 @@ function resetWorldDay(plan){ // shared per-day world reset (granny sim only mat
 
 function fmtTime(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); }
 function mpConnected(){ if(!MP.active)return false;
-  if(MP.isHost) return !!(MP.peer&&MP.peer.open);
+  if(MP.isHost) return MP.conns.some(c=>c.open);
   return !!(MP.host&&MP.host.open); }
+function returnToCoopLobby(notifyGuests){
+  $('endcard').style.display='none';
+  $('hud').style.display='none';
+  if(IS_TOUCH)$('touchui').style.display='none';
+  gamePhase='menu';
+  MP.started=false; MP.escSent=false; MP.gnet=null; MP.net={};
+  hidden=false; hiddenSafe=false; hideSpot=null;
+  for(const id in MP.avatars) if(id!==MP.myId) dropAvatar(id);
+  for(const id in MP.remote) MP.remote[id]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
+  showLobby(MP.code,MP.isHost);
+  if(MP.isHost){
+    $('lobbystatus').textContent='Ready for another round — press START GAME when everyone is here';
+    if(notifyGuests) sendAll({t:'lobbyagain',code:MP.code,profiles:MP.profiles});
+  } else $('lobbystatus').textContent='Waiting for host to start the next round...';
+  updateLobbyList(); }
 function backToMenu(){
   destroyMpPeer();
   MP.active=false; MP.started=false; MP.isHost=false; MP.pendingHost=false;
@@ -1249,29 +1275,18 @@ function backToMenu(){
   if(IS_TOUCH)$('touchui').style.display='none';
   $('landing').style.display='flex';
   updateMpStatus(); }
-function rematchCoop(){
-  if(!MP.active||!MP.isHost||!mpConnected()){ backToMenu(); return; }
-  $('endcard').style.display='none';
-  hidden=false; hiddenSafe=false; hideSpot=null;
-  for(const id in MP.remote) MP.remote[id]={x:0,z:0,y:0,yaw:0,crouch:false,hidden:false,hiddenSafe:false,flash:false,noise:0};
-  MP.net={}; MP.gnet=null; MP.escSent=false;
-  hasDart=false; if(dartMesh){scene.remove(dartMesh);dartMesh=null;}
-  const items=makeSpawnPlan(), dayp=makeDayPlan(items);
-  MP.started=true; MP.startMsg={t:'start',d:MP.diffIdx,items,dayp,profiles:MP.profiles};
-  sendAll(MP.startMsg);
-  startRun(MP.diffIdx,items,dayp); }
 function setupEndButtons(){
   const btn=$('endprimary'), sub=$('endsecondary'), hint=$('endhint');
   btn.disabled=false; sub.style.display='none'; hint.textContent='';
   if(!MP.active){ btn.textContent='PLAY AGAIN'; btn.onclick=()=>location.reload(); return; }
   if(MP.isHost&&mpConnected()){
-    btn.textContent='PLAY AGAIN WITH GROUP'; btn.onclick=rematchCoop;
+    btn.textContent='PLAY AGAIN WITH GROUP'; btn.onclick=()=>returnToCoopLobby(true);
     sub.textContent='NEW ROOM (NEW CODE)'; sub.style.display='inline-block'; sub.onclick=backToMenu;
-    hint.textContent='Everyone who stayed connected gets another round — no new code needed.'; return; }
+    hint.textContent='Returns everyone to the lobby — then press START GAME. Same room code.'; return; }
   if(!MP.isHost&&mpConnected()){
-    btn.textContent='WAITING FOR HOST...'; btn.disabled=true; btn.onclick=null;
+    btn.textContent='RETURN TO LOBBY'; btn.disabled=false; btn.onclick=()=>returnToCoopLobby(false);
     sub.textContent='LEAVE'; sub.style.display='inline-block'; sub.onclick=backToMenu;
-    hint.textContent='The host can start another round for the whole group.'; return; }
+    hint.textContent='Wait here for the host to press START GAME again.'; return; }
   btn.textContent='PLAY AGAIN'; btn.onclick=()=>location.reload();
   hint.textContent='Connection lost. Host must create a new room and share a new code.'; }
 function endGame(won,how,who){ if(gamePhase==='end')return; gamePhase='end'; document.exitPointerLock&&document.exitPointerLock();
@@ -1493,7 +1508,11 @@ $('enterbtn').addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('solo'); });
 $('hostbtn').addEventListener('click',()=>{
   audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('host'); });
-$('joinbtn').addEventListener('click',()=>{ $('joinrow').style.display='block'; $('joincode').focus(); });
+$('joinbtn').addEventListener('click',()=>{ $('joinrow').style.display='block';
+  const last=sessionStorage.getItem('gh_join_code');
+  if(last&&!$('joincode').value){ $('joincode').value=last;
+    $('joinhint').textContent='Last room: '+last+' — confirm with host if you refreshed the page'; }
+  $('joincode').focus(); });
 $('joingo').addEventListener('click',()=>{ const code=$('joincode').value.trim().toUpperCase();
   if(code.length!==4){ $('joinrow').style.display='block'; return; }
   audioInit(); AC.resume&&AC.resume(); startAmbient(); showProfile('join',code); });
@@ -1646,25 +1665,17 @@ function updateLobbyList(){ const ids=lobbyIds();
   }).join('')||'<div>connecting...</div>'; }
 function broadcastProfiles(){ sendAll({t:'profiles',profiles:MP.profiles}); updateLobbyList(); }
 
-function destroyMpPeer(){ MP.connecting=false;
-  if(MP.host){ try{ MP.host.close(); }catch(e){} MP.host=null; }
-  for(const c of MP.conns){ try{ c.close(); }catch(e){} }
-  MP.conns=[]; MP.remote={};
-  if(MP.peer){ try{ MP.peer.destroy(); }catch(e){} MP.peer=null; } }
-function resetMpLobbyState(isHost){
-  destroyMpPeer();
-  MP.active=true; MP.isHost=!!isHost; MP.started=false; MP.startMsg=null; MP.gnet=null;
-  MP.net={}; MP.avatars={}; MP.escSent=false; MP.sendT=0; nextPid=2; }
-
 function createRoom(dIdx,retry=0){
   if(MP.connecting)return;
   MP.pendingHost=false; resetMpLobbyState(true);
   MP.myId='P1'; MP.diffIdx=dIdx; DIFF=DIFFS[dIdx];
   MP.profiles={P1:myProfile()};
   MP.code=makeCode(); showLobby('····',true); $('lobbystatus').textContent='creating room...';
+  const openHost=()=>{
   MP.connecting=true;
   const peer=new Peer('grannyhouse-'+MP.code,PEER_CFG); MP.peer=peer;
   peer.on('open',()=>{ MP.connecting=false; $('roomcode').textContent=MP.code;
+    sessionStorage.setItem('gh_host_code',MP.code);
     $('lobbystatus').textContent='share the code with your friends'; updateLobbyList(); });
   peer.on('error',err=>{
     MP.connecting=false;
@@ -1688,8 +1699,8 @@ function createRoom(dIdx,retry=0){
       broadcastLobby(); });
     c.on('data',d=>hostData(c,d));
     c.on('close',()=>{ dropGuest(c); });
-    c.on('error',()=>{ dropGuest(c); }); }); }
-let nextPid=2;
+    c.on('error',()=>{ dropGuest(c); }); }); };
+  setTimeout(openHost, retry?0:350); }
 function broadcastLobby(){ updateLobbyList(); sendAll({t:'lobby',ids:lobbyIds()}); }
 function dropGuest(c){ const pid=c.__pid; if(!pid)return;
   MP.conns=MP.conns.filter(x=>x!==c); delete MP.remote[pid]; removeAvatar(pid); delete MP.profiles[pid];
@@ -1720,12 +1731,14 @@ function joinRoom(code,retry=0){
     if((err.type==='network'||err.type==='socket-error'||err.type==='server-error')&&retry<3){
       destroyMpPeer(); $('lobbystatus').textContent='reconnecting...';
       setTimeout(()=>joinRoom(code,retry+1),900); return; }
-    if(err.type==='peer-unavailable') $('lobbystatus').textContent='room not found. check the code.';
+    if(err.type==='peer-unavailable'){ $('lobbystatus').textContent='room not found — ask host for the current code (not an old one).';
+      sessionStorage.removeItem('gh_join_code'); }
     else $('lobbystatus').textContent=err.type==='browser-incompatible'
       ?'browser blocked WebRTC — try Chrome or Firefox'
       :('network error: '+err.type); });
   peer.on('open',()=>{ const c=peer.connect('grannyhouse-'+code,{reliable:true}); MP.host=c;
     c.on('open',()=>{ clearTimeout(joinTimer); MP.connecting=false;
+      sessionStorage.setItem('gh_join_code',code);
       $('lobbystatus').textContent='connected! waiting for the host to start...'; });
     c.on('data',guestData);
     const bye=(err)=>{ clearTimeout(joinTimer); MP.connecting=false;
@@ -1762,6 +1775,10 @@ function guestData(d){
     $('lobbystatus').textContent='connected! waiting for the host to start...'; updateLobbyList(); }
   else if(d.t==='profiles'){ for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]); updateLobbyList(); }
   else if(d.t==='lobby'){ updateLobbyList(); }
+  else if(d.t==='lobbyagain'){
+    if(d.profiles) for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]);
+    if(d.code) MP.code=d.code;
+    returnToCoopLobby(false); }
   else if(d.t==='start'){ if(d.profiles) for(const id in d.profiles) setPlayerProfile(id,d.profiles[id]);
     startRun(d.d,d.items,d.dayp,d.sync); }
   else if(d.t==='ev'){ applyEv(d.ev); }
@@ -1807,7 +1824,7 @@ function grannyNetUpdate(dt){ const n=MP.gnet; if(!n)return;
   granny.obj.rotation.y=granny.yaw; }
 
 /* ============================== MAIN LOOP ============================== */
-window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAvatar,setPlayerProfile,startRun,endGame,rematchCoop,backToMenu,SX,SZ,FRONT,CAR_POS,
+window.__dbg={player,granny,floorHeight,fireDart,MP,PROFILE,ensureAvatar,dropAvatar,setPlayerProfile,startRun,endGame,returnToCoopLobby,backToMenu,SX,SZ,FRONT,CAR_POS,
   showAvatar(id,gender,name,opts={}){ opts=opts||{}; gamePhase='play'; MP.myId='CAM'; MP.active=true;
     ['landing','menu','lobby','profile','daycard','endcard','pause','jumpscare'].forEach(i=>$(i).style.display='none');
     $('hud').style.display='block';
@@ -1927,8 +1944,7 @@ function loop(){ requestAnimationFrame(loop);
   renderer.render(scene,camera);
 }
 loop();
-addEventListener('pagehide',()=>{ destroyMpPeer(); });
-addEventListener('beforeunload',()=>{ destroyMpPeer(); });
+addEventListener('beforeunload',()=>{ if(MP.peer||MP.host) destroyMpPeer(); });
 </script>
 </body>
 </html>
